@@ -6,10 +6,12 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.graphics.PointF
 import android.location.LocationManager
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.view.MotionEvent
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -43,6 +45,8 @@ class MainActivity : AppCompatActivity() {
     private val routePoints = mutableListOf<RoutePoint>()
     private lateinit var adapter: RouteAdapter
     private var selectedRouteId: Long? = null
+    private var isDraggingPoint = false
+    private var draggingIndex = -1
 
     private val mockStatusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -155,8 +159,30 @@ class MainActivity : AppCompatActivity() {
             }
 
             map.addOnMapLongClickListener { point ->
-                removeNearestPoint(point.latitude(), point.longitude())
+                if (!tryStartDrag(point.latitude(), point.longitude())) {
+                    removeNearestPoint(point.latitude(), point.longitude())
+                }
                 true
+            }
+        }
+
+        mapView.setOnTouchListener { _, event ->
+            if (!isDraggingPoint) return@setOnTouchListener false
+            val map = mapLibre ?: return@setOnTouchListener false
+            when (event.actionMasked) {
+                MotionEvent.ACTION_MOVE -> {
+                    val latLng = map.projection.fromScreenLocation(PointF(event.x, event.y))
+                    if (draggingIndex in routePoints.indices) {
+                        routePoints[draggingIndex] = RoutePoint(latLng.latitude, latLng.longitude)
+                        updateRouteLine()
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    stopDrag()
+                    true
+                }
+                else -> false
             }
         }
     }
@@ -290,6 +316,35 @@ class MainActivity : AppCompatActivity() {
             updateRouteLine()
             updatePointCount()
         }
+    }
+
+    private fun tryStartDrag(lat: Double, lng: Double): Boolean {
+        if (routePoints.isEmpty()) return false
+        val thresholdMeters = 40.0
+        var nearestIndex = -1
+        var nearestDistance = Double.MAX_VALUE
+        for (i in routePoints.indices) {
+            val point = routePoints[i]
+            val distance = haversineMeters(lat, lng, point.latitude, point.longitude)
+            if (distance < nearestDistance) {
+                nearestDistance = distance
+                nearestIndex = i
+            }
+        }
+        if (nearestIndex >= 0 && nearestDistance <= thresholdMeters) {
+            isDraggingPoint = true
+            draggingIndex = nearestIndex
+            mapLibre?.uiSettings?.setAllGesturesEnabled(false)
+            return true
+        }
+        return false
+    }
+
+    private fun stopDrag() {
+        isDraggingPoint = false
+        draggingIndex = -1
+        mapLibre?.uiSettings?.setAllGesturesEnabled(true)
+        updatePointCount()
     }
 
     private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {

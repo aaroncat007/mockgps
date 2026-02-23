@@ -64,6 +64,14 @@
             android:textSize="12sp"
             android:layout_marginTop="4dp" />
 
+        <TextView
+            android:id="@+id/textMapTipDrag"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="@string/hint_drag_point"
+            android:textSize="12sp"
+            android:layout_marginTop="2dp" />
+
         <Button
             android:id="@+id/buttonDevOptions"
             android:layout_width="match_parent"

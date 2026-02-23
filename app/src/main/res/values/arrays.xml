@@ -1,0 +1,7 @@
+<resources>
+    <string-array name="speed_modes">
+        <item>Walk</item>
+        <item>Jog</item>
+        <item>Drive</item>
+    </string-array>
+</resources>
