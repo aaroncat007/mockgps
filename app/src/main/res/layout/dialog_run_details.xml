@@ -20,6 +20,14 @@
         style="@style/Widget.MockGps.Button.Primary"
         android:layout_marginTop="8dp" />
 
+    <Button
+        android:id="@+id/buttonReplayRun"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/button_replay_run"
+        style="@style/Widget.MockGps.Button.Secondary"
+        android:layout_marginTop="6dp" />
+
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerEvents"
         android:layout_width="match_parent"

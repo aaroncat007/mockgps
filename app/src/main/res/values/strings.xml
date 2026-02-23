@@ -47,6 +47,7 @@
     <string name="button_copy_csv">Copy CSV</string>
     <string name="title_run_details">Run Details</string>
     <string name="message_copied">Copied to clipboard.</string>
+    <string name="button_replay_run">Replay Run</string>
     <string name="title_edit_favorite">Edit Favorite</string>
     <string name="hint_favorite_note">Note</string>
     <string name="button_save">Save</string>

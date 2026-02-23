@@ -549,6 +549,7 @@ class MainActivity : AppCompatActivity() {
         val view = layoutInflater.inflate(R.layout.dialog_run_details, null)
         val summaryView = view.findViewById<android.widget.TextView>(R.id.textRunSummary)
         val copyButton = view.findViewById<android.widget.Button>(R.id.buttonCopyCsv)
+        val replayButton = view.findViewById<android.widget.Button>(R.id.buttonReplayRun)
         val recycler = view.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.recyclerEvents)
 
         summaryView.text = summary
@@ -563,6 +564,19 @@ class MainActivity : AppCompatActivity() {
             val clip = android.content.ClipData.newPlainText("gps_events", csv)
             clipboard.setPrimaryClip(clip)
             Toast.makeText(this, getString(R.string.message_copied), Toast.LENGTH_SHORT).show()
+        }
+
+        replayButton.setOnClickListener {
+            if (events.isEmpty()) return@setOnClickListener
+            routePoints.clear()
+            events.forEach { event ->
+                routePoints.add(RoutePoint(event.lat, event.lng))
+            }
+            updateRouteLine()
+            updatePointCount()
+            binding.textError.text = ""
+            binding.spinnerSpeedMode.setSelection(item.speedMode.coerceIn(0, 2))
+            startRoutePlayback()
         }
 
         android.app.AlertDialog.Builder(this)
