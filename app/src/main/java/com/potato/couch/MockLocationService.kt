@@ -39,6 +39,15 @@ class MockLocationService : Service() {
     private var isLoopEnabled = false
     private var isRoundTripEnabled = false
     private var isForward = true
+    private var driftEnabled = false
+    private var bounceEnabled = false
+    private var smoothingEnabled = false
+    private var driftMeters = 0.0
+    private var bounceMeters = 0.0
+    private var smoothingAlpha = 0.0
+    private var smoothedLat: Double? = null
+    private var smoothedLng: Double? = null
+    private var bouncePhase = 0.0
 
     override fun onCreate() {
         super.onCreate()
@@ -59,6 +68,12 @@ class MockLocationService : Service() {
                 isRandomSpeed = intent.getBooleanExtra(EXTRA_RANDOM_SPEED, false)
                 isLoopEnabled = intent.getBooleanExtra(EXTRA_LOOP_ENABLED, false)
                 isRoundTripEnabled = intent.getBooleanExtra(EXTRA_ROUNDTRIP_ENABLED, false)
+                driftEnabled = intent.getBooleanExtra(EXTRA_DRIFT_ENABLED, false)
+                bounceEnabled = intent.getBooleanExtra(EXTRA_BOUNCE_ENABLED, false)
+                smoothingEnabled = intent.getBooleanExtra(EXTRA_SMOOTHING_ENABLED, false)
+                driftMeters = intent.getDoubleExtra(EXTRA_DRIFT_METERS, 0.0)
+                bounceMeters = intent.getDoubleExtra(EXTRA_BOUNCE_METERS, 0.0)
+                smoothingAlpha = intent.getDoubleExtra(EXTRA_SMOOTHING_ALPHA, 0.0)
                 val points = RouteJson.fromJson(json)
                 if (points.size >= 2) {
                     routePoints.clear()
@@ -67,6 +82,9 @@ class MockLocationService : Service() {
                     distanceOnSegment = 0.0
                     isForward = true
                     pauseUntilRealtime = 0L
+                    smoothedLat = null
+                    smoothedLng = null
+                    bouncePhase = 0.0
                     pauseMinSeconds = pauseMin.coerceAtLeast(0.0)
                     pauseMaxSeconds = pauseMax.coerceAtLeast(0.0)
                     if (pauseMaxSeconds < pauseMinSeconds) {
@@ -223,6 +241,48 @@ class MockLocationService : Service() {
         }
     }
 
+    private fun applyRealism(lat: Double, lng: Double): Pair<Double, Double> {
+        var latOut = lat
+        var lngOut = lng
+
+        if (bounceEnabled && bounceMeters > 0.0) {
+            bouncePhase += 0.35
+            val offsetMeters = Math.sin(bouncePhase) * bounceMeters
+            val offset = metersToLatLng(latOut, offsetMeters, 90.0)
+            latOut += offset.first
+            lngOut += offset.second
+        }
+
+        if (driftEnabled && driftMeters > 0.0) {
+            val angle = Math.random() * 360.0
+            val offset = metersToLatLng(latOut, driftMeters, angle)
+            latOut += offset.first
+            lngOut += offset.second
+        }
+
+        if (smoothingEnabled) {
+            val alpha = smoothingAlpha.coerceIn(0.0, 1.0)
+            val prevLat = smoothedLat ?: latOut
+            val prevLng = smoothedLng ?: lngOut
+            val smoothLat = prevLat + (latOut - prevLat) * alpha
+            val smoothLng = prevLng + (lngOut - prevLng) * alpha
+            smoothedLat = smoothLat
+            smoothedLng = smoothLng
+            return smoothLat to smoothLng
+        }
+
+        return latOut to lngOut
+    }
+
+    private fun metersToLatLng(baseLat: Double, meters: Double, bearingDegrees: Double): Pair<Double, Double> {
+        val earthRadius = 6371000.0
+        val delta = meters / earthRadius
+        val bearing = Math.toRadians(bearingDegrees)
+        val dLat = delta * Math.cos(bearing)
+        val dLng = delta * Math.sin(bearing) / Math.cos(Math.toRadians(baseLat))
+        return Math.toDegrees(dLat) to Math.toDegrees(dLng)
+    }
+
     private fun updatePlayback() {
         if (routePoints.size < 2) return
         if (isPaused) {
@@ -265,7 +325,8 @@ class MockLocationService : Service() {
                 val fraction = distanceOnSegment / segmentLength
                 val lat = start.latitude + (end.latitude - start.latitude) * fraction
                 val lng = start.longitude + (end.longitude - start.longitude) * fraction
-                pushMockLocation(lat, lng)
+                val adjusted = applyRealism(lat, lng)
+                pushMockLocation(adjusted.first, adjusted.second)
                 return
             }
 
@@ -290,7 +351,8 @@ class MockLocationService : Service() {
     private fun handleRouteCompletion() {
         val lastIndex = if (isForward) routePoints.lastIndex else 0
         val last = routePoints[lastIndex]
-        pushMockLocation(last.latitude, last.longitude)
+        val adjusted = applyRealism(last.latitude, last.longitude)
+        pushMockLocation(adjusted.first, adjusted.second)
 
         if (isRoundTripEnabled) {
             isForward = !isForward
@@ -384,6 +446,12 @@ class MockLocationService : Service() {
         const val EXTRA_RANDOM_SPEED = "extra_random_speed"
         const val EXTRA_LOOP_ENABLED = "extra_loop_enabled"
         const val EXTRA_ROUNDTRIP_ENABLED = "extra_roundtrip_enabled"
+        const val EXTRA_DRIFT_ENABLED = "extra_drift_enabled"
+        const val EXTRA_BOUNCE_ENABLED = "extra_bounce_enabled"
+        const val EXTRA_SMOOTHING_ENABLED = "extra_smoothing_enabled"
+        const val EXTRA_DRIFT_METERS = "extra_drift_meters"
+        const val EXTRA_BOUNCE_METERS = "extra_bounce_meters"
+        const val EXTRA_SMOOTHING_ALPHA = "extra_smoothing_alpha"
         private const val PREFS_NAME = "mock_prefs"
         private const val PREF_KEY_RUNNING = "mock_service_running"
         private const val UPDATE_INTERVAL_MS = 1000L

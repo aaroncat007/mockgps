@@ -347,6 +347,107 @@
                 android:layout_marginStart="12dp" />
         </LinearLayout>
 
+        <TextView
+            android:id="@+id/labelM4"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/label_realism"
+            android:textStyle="bold"
+            android:layout_marginTop="10dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="6dp">
+
+            <CheckBox
+                android:id="@+id/checkDrift"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/label_drift_enabled" />
+
+            <CheckBox
+                android:id="@+id/checkBounce"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/label_bounce_enabled"
+                android:layout_marginStart="12dp" />
+
+            <CheckBox
+                android:id="@+id/checkSmoothing"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/label_smoothing_enabled"
+                android:layout_marginStart="12dp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="6dp">
+
+            <EditText
+                android:id="@+id/editDriftMeters"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:inputType="numberDecimal"
+                android:hint="@string/hint_drift_meters" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/label_drift_meters"
+                android:layout_marginStart="6dp"
+                android:layout_gravity="center_vertical" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="6dp">
+
+            <EditText
+                android:id="@+id/editBounceMeters"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:inputType="numberDecimal"
+                android:hint="@string/hint_bounce_meters" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/label_bounce_meters"
+                android:layout_marginStart="6dp"
+                android:layout_gravity="center_vertical" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="6dp">
+
+            <EditText
+                android:id="@+id/editSmoothingAlpha"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:inputType="numberDecimal"
+                android:hint="@string/hint_smoothing_alpha" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/label_smoothing_alpha"
+                android:layout_marginStart="6dp"
+                android:layout_gravity="center_vertical" />
+        </LinearLayout>
+
         <Button
             android:id="@+id/buttonDevOptions"
             android:layout_width="match_parent"

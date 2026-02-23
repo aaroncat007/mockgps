@@ -81,6 +81,7 @@ class MainActivity : AppCompatActivity() {
         bindActions()
         setupInputFilters()
         setupTooltips()
+        initM4Defaults()
     }
 
     private fun bindActions() {
@@ -151,6 +152,18 @@ class MainActivity : AppCompatActivity() {
         binding.buttonClearPause.setOnClickListener {
             binding.editPauseMin.text?.clear()
             binding.editPauseMax.text?.clear()
+        }
+
+        binding.checkDrift.setOnCheckedChangeListener { _, isChecked ->
+            binding.editDriftMeters.isEnabled = isChecked
+        }
+
+        binding.checkBounce.setOnCheckedChangeListener { _, isChecked ->
+            binding.editBounceMeters.isEnabled = isChecked
+        }
+
+        binding.checkSmoothing.setOnCheckedChangeListener { _, isChecked ->
+            binding.editSmoothingAlpha.isEnabled = isChecked
         }
 
         binding.checkRoundTrip.setOnCheckedChangeListener { _, isChecked ->
@@ -466,8 +479,34 @@ class MainActivity : AppCompatActivity() {
         val randomSpeed = binding.checkRandomSpeed.isChecked
         val loopEnabled = binding.checkLoop.isChecked
         val roundTripEnabled = binding.checkRoundTrip.isChecked
+        val driftEnabled = binding.checkDrift.isChecked
+        val bounceEnabled = binding.checkBounce.isChecked
+        val smoothingEnabled = binding.checkSmoothing.isChecked
+
+        val driftMeters = binding.editDriftMeters.text.toString().toDoubleOrNull() ?: 0.0
+        val bounceMeters = binding.editBounceMeters.text.toString().toDoubleOrNull() ?: 0.0
+        val smoothingAlpha = binding.editSmoothingAlpha.text.toString().toDoubleOrNull() ?: 0.0
 
         if (!validateRanges(showError = true)) {
+            return
+        }
+
+        if (driftEnabled && !isInRange(driftMeters, 0.0, MAX_DRIFT_METERS)) {
+            binding.textStatus.setText(R.string.status_error)
+            binding.textError.setText(R.string.error_drift_range)
+            binding.editDriftMeters.error = getString(R.string.error_drift_range)
+            return
+        }
+        if (bounceEnabled && !isInRange(bounceMeters, 0.0, MAX_BOUNCE_METERS)) {
+            binding.textStatus.setText(R.string.status_error)
+            binding.textError.setText(R.string.error_bounce_range)
+            binding.editBounceMeters.error = getString(R.string.error_bounce_range)
+            return
+        }
+        if (smoothingEnabled && !isInRange(smoothingAlpha, 0.0, MAX_SMOOTHING_ALPHA)) {
+            binding.textStatus.setText(R.string.status_error)
+            binding.textError.setText(R.string.error_smoothing_range)
+            binding.editSmoothingAlpha.error = getString(R.string.error_smoothing_range)
             return
         }
 
@@ -495,6 +534,12 @@ class MainActivity : AppCompatActivity() {
             putExtra(MockLocationService.EXTRA_RANDOM_SPEED, randomSpeed)
             putExtra(MockLocationService.EXTRA_LOOP_ENABLED, loopEnabled)
             putExtra(MockLocationService.EXTRA_ROUNDTRIP_ENABLED, roundTripEnabled)
+            putExtra(MockLocationService.EXTRA_DRIFT_ENABLED, driftEnabled)
+            putExtra(MockLocationService.EXTRA_BOUNCE_ENABLED, bounceEnabled)
+            putExtra(MockLocationService.EXTRA_SMOOTHING_ENABLED, smoothingEnabled)
+            putExtra(MockLocationService.EXTRA_DRIFT_METERS, driftMeters)
+            putExtra(MockLocationService.EXTRA_BOUNCE_METERS, bounceMeters)
+            putExtra(MockLocationService.EXTRA_SMOOTHING_ALPHA, smoothingAlpha)
         }
         ContextCompat.startForegroundService(this, intent)
         binding.textStatus.setText(R.string.status_running)
@@ -553,11 +598,26 @@ class MainActivity : AppCompatActivity() {
         binding.editSpeedMax.filters = arrayOf(filter)
         binding.editPauseMin.filters = arrayOf(filter)
         binding.editPauseMax.filters = arrayOf(filter)
+        binding.editDriftMeters.filters = arrayOf(filter)
+        binding.editBounceMeters.filters = arrayOf(filter)
+        binding.editSmoothingAlpha.filters = arrayOf(filter)
     }
 
     private fun setupTooltips() {
         ViewCompat.setTooltipText(binding.iconSpeedInfo, getString(R.string.tooltip_speed_range))
         ViewCompat.setTooltipText(binding.iconPauseInfo, getString(R.string.tooltip_pause_range))
+    }
+
+    private fun initM4Defaults() {
+        binding.checkDrift.isChecked = false
+        binding.checkBounce.isChecked = false
+        binding.checkSmoothing.isChecked = false
+        binding.editDriftMeters.isEnabled = false
+        binding.editBounceMeters.isEnabled = false
+        binding.editSmoothingAlpha.isEnabled = false
+        binding.editDriftMeters.setText("3")
+        binding.editBounceMeters.setText("5")
+        binding.editSmoothingAlpha.setText("0.3")
     }
 
     private fun attachRangeWatchers() {
@@ -607,6 +667,10 @@ class MainActivity : AppCompatActivity() {
             binding.textError.text = ""
         }
         return true
+    }
+
+    private fun isInRange(value: Double, min: Double, max: Double): Boolean {
+        return value >= min && value <= max
     }
 
     private fun setRangeError(
@@ -762,6 +826,9 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_KEY_RUNNING = "mock_service_running"
         private const val MAX_SPEED_KMH = 200.0
         private const val MAX_PAUSE_SEC = 120.0
+        private const val MAX_DRIFT_METERS = 50.0
+        private const val MAX_BOUNCE_METERS = 50.0
+        private const val MAX_SMOOTHING_ALPHA = 1.0
         private const val MAP_STYLE_URL = "https://demotiles.maplibre.org/style.json"
         private const val ROUTE_SOURCE_ID = "route-source"
         private const val ROUTE_LAYER_ID = "route-layer"
