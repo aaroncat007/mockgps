@@ -604,6 +604,38 @@
             style="@style/Widget.MockGps.Button.Secondary"
             android:layout_marginTop="8dp" />
 
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="8dp">
+
+            <Button
+                android:id="@+id/buttonImportRoute"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/button_import_route"
+                style="@style/Widget.MockGps.Button.Secondary" />
+
+            <Button
+                android:id="@+id/buttonExportRoute"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/button_export_route"
+                style="@style/Widget.MockGps.Button.Primary"
+                android:layout_marginStart="8dp" />
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/buttonExportRouteKml"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/button_export_route_kml"
+            style="@style/Widget.MockGps.Button.Secondary"
+            android:layout_marginTop="6dp" />
+
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

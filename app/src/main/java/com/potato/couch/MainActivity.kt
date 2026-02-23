@@ -16,6 +16,7 @@ import android.text.Spanned
 import android.view.MotionEvent
 import android.widget.EditText
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -25,6 +26,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.potato.couch.data.AppDatabase
 import com.potato.couch.data.FavoriteEntity
 import com.potato.couch.data.RouteEntity
+import com.potato.couch.data.RouteFileIO
 import com.potato.couch.data.RouteJson
 import com.potato.couch.data.RoutePoint
 import com.potato.couch.databinding.ActivityMainBinding
@@ -62,6 +64,83 @@ class MainActivity : AppCompatActivity() {
     private lateinit var historyAdapter: RunHistoryAdapter
     private var selectedFavoriteId: Long? = null
     private var lastTappedPoint: RoutePoint? = null
+    private val openDocumentLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri == null) return@registerForActivityResult
+            val input = contentResolver.openInputStream(uri) ?: return@registerForActivityResult
+            input.use { raw ->
+                val stream = java.io.BufferedInputStream(raw)
+                stream.mark(512)
+                try {
+                    val buffer = ByteArray(512)
+                    val read = stream.read(buffer)
+                    val textSample = if (read > 0) String(buffer, 0, read, Charsets.UTF_8) else \"\"
+                    stream.reset()
+                    val points = when {
+                        textSample.contains(\"<gpx\", ignoreCase = true) -> RouteFileIO.parseGpx(stream)
+                        textSample.contains(\"<kml\", ignoreCase = true) -> RouteFileIO.parseKml(stream)
+                        else -> null
+                    }
+                    if (points == null) {
+                        binding.textError.setText(R.string.error_import_unsupported)
+                        return@use
+                    }
+                    if (points.isNotEmpty()) {
+                        routePoints.clear()
+                        routePoints.addAll(points)
+                        updateRouteLine()
+                        updatePointCount()
+                        showImportSummary(points.size)
+                    } else {
+                        binding.textError.setText(R.string.error_import_empty)
+                    }
+                } catch (_: Exception) {
+                    binding.textError.setText(R.string.error_import_failed)
+                }
+            }
+        }
+
+    private val createGpxLauncher =
+        registerForActivityResult(ActivityResultContracts.CreateDocument(\"application/gpx+xml\")) { uri ->
+            if (uri == null) return@registerForActivityResult
+            if (routePoints.size < 2) {
+                binding.textError.setText(R.string.error_route_export_points)
+                return@registerForActivityResult
+            }
+            val output = contentResolver.openOutputStream(uri) ?: run {
+                binding.textError.setText(R.string.error_export_failed)
+                return@registerForActivityResult
+            }
+            output.use { stream ->
+                try {
+                    val name = binding.editRouteName.text.toString().trim().ifEmpty { \"Route\" }
+                    RouteFileIO.writeGpx(stream, name, routePoints)
+                } catch (_: Exception) {
+                    binding.textError.setText(R.string.error_export_failed)
+                }
+            }
+        }
+
+    private val createKmlLauncher =
+        registerForActivityResult(ActivityResultContracts.CreateDocument(\"application/vnd.google-earth.kml+xml\")) { uri ->
+            if (uri == null) return@registerForActivityResult
+            if (routePoints.size < 2) {
+                binding.textError.setText(R.string.error_route_export_points)
+                return@registerForActivityResult
+            }
+            val output = contentResolver.openOutputStream(uri) ?: run {
+                binding.textError.setText(R.string.error_export_failed)
+                return@registerForActivityResult
+            }
+            output.use { stream ->
+                try {
+                    val name = binding.editRouteName.text.toString().trim().ifEmpty { \"Route\" }
+                    RouteFileIO.writeKml(stream, name, routePoints)
+                } catch (_: Exception) {
+                    binding.textError.setText(R.string.error_export_failed)
+                }
+            }
+        }
     private var isDraggingPoint = false
     private var draggingIndex = -1
 
@@ -231,6 +310,28 @@ class MainActivity : AppCompatActivity() {
 
         binding.buttonRenameRoute.setOnClickListener {
             renameSelectedRoute()
+        }
+
+        binding.buttonImportRoute.setOnClickListener {
+            openDocumentLauncher.launch(
+                arrayOf(
+                    \"application/gpx+xml\",
+                    \"application/vnd.google-earth.kml+xml\",
+                    \"application/xml\",
+                    \"text/xml\",
+                    \"*/*\"
+                )
+            )
+        }
+
+        binding.buttonExportRoute.setOnClickListener {
+            val name = binding.editRouteName.text.toString().trim().ifEmpty { \"route\" }
+            createGpxLauncher.launch(\"${name}.gpx\")
+        }
+
+        binding.buttonExportRouteKml.setOnClickListener {
+            val name = binding.editRouteName.text.toString().trim().ifEmpty { \"route\" }
+            createKmlLauncher.launch(\"${name}.kml\")
         }
 
         binding.buttonDeleteRoute.setOnClickListener {
@@ -414,6 +515,18 @@ class MainActivity : AppCompatActivity() {
             }
             renderRunDialog(item, eventItems)
         }
+    }
+
+    private fun showImportSummary(pointCount: Int) {
+        android.app.AlertDialog.Builder(this)
+            .setTitle(getString(R.string.title_import_success))
+            .setMessage(getString(R.string.message_import_points, pointCount))
+            .setPositiveButton(getString(R.string.button_save_as_route)) { _, _ ->
+                saveRoute()
+            }
+            .setNeutralButton(getString(R.string.button_keep_temp), null)
+            .setNegativeButton(getString(R.string.button_cancel), null)
+            .show()
     }
 
     private fun renderRunDialog(item: RunHistoryItem, events: List<GpsEventItem>) {
