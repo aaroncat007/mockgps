@@ -15,6 +15,7 @@ import android.text.InputFilter
 import android.text.Spanned
 import android.view.MotionEvent
 import android.widget.EditText
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -22,13 +23,21 @@ import androidx.core.view.ViewCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.potato.couch.data.AppDatabase
+import com.potato.couch.data.FavoriteEntity
 import com.potato.couch.data.RouteEntity
 import com.potato.couch.data.RouteJson
 import com.potato.couch.data.RoutePoint
 import com.potato.couch.databinding.ActivityMainBinding
+import com.potato.couch.ui.FavoriteAdapter
+import com.potato.couch.ui.FavoriteItem
+import com.potato.couch.ui.GpsEventAdapter
+import com.potato.couch.ui.GpsEventItem
+import com.potato.couch.ui.RunHistoryAdapter
+import com.potato.couch.ui.RunHistoryItem
 import com.potato.couch.ui.RouteAdapter
 import com.potato.couch.ui.RouteItem
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.maps.MapView
@@ -49,6 +58,10 @@ class MainActivity : AppCompatActivity() {
     private val routePoints = mutableListOf<RoutePoint>()
     private lateinit var adapter: RouteAdapter
     private var selectedRouteId: Long? = null
+    private lateinit var favoriteAdapter: FavoriteAdapter
+    private lateinit var historyAdapter: RunHistoryAdapter
+    private var selectedFavoriteId: Long? = null
+    private var lastTappedPoint: RoutePoint? = null
     private var isDraggingPoint = false
     private var draggingIndex = -1
 
@@ -77,7 +90,29 @@ class MainActivity : AppCompatActivity() {
         binding.recyclerRoutes.layoutManager = LinearLayoutManager(this)
         binding.recyclerRoutes.adapter = adapter
 
+        favoriteAdapter = FavoriteAdapter { item ->
+            selectedFavoriteId = item.id
+            lastTappedPoint = RoutePoint(item.lat, item.lng)
+            mapLibre?.animateCamera(
+                CameraUpdateFactory.newLatLngZoom(
+                    org.maplibre.android.geometry.LatLng(item.lat, item.lng),
+                    15.5
+                )
+            )
+            showFavoriteEditDialog(item)
+        }
+        binding.recyclerFavorites.layoutManager = LinearLayoutManager(this)
+        binding.recyclerFavorites.adapter = favoriteAdapter
+
+        historyAdapter = RunHistoryAdapter { item ->
+            showRunDetails(item)
+        }
+        binding.recyclerHistory.layoutManager = LinearLayoutManager(this)
+        binding.recyclerHistory.adapter = historyAdapter
+
         observeRoutes()
+        observeFavorites()
+        observeHistory()
         bindActions()
         setupInputFilters()
         setupTooltips()
@@ -201,6 +236,14 @@ class MainActivity : AppCompatActivity() {
         binding.buttonDeleteRoute.setOnClickListener {
             deleteSelectedRoute()
         }
+
+        binding.buttonAddFavorite.setOnClickListener {
+            addFavorite()
+        }
+
+        binding.buttonDeleteFavorite.setOnClickListener {
+            deleteFavorite()
+        }
     }
 
     private fun setupMap() {
@@ -229,6 +272,7 @@ class MainActivity : AppCompatActivity() {
 
             map.addOnMapClickListener { point ->
                 routePoints.add(RoutePoint(point.latitude(), point.longitude()))
+                lastTappedPoint = RoutePoint(point.latitude(), point.longitude())
                 updateRouteLine()
                 updatePointCount()
                 true
@@ -315,6 +359,120 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun observeFavorites() {
+        val db = AppDatabase.getInstance(this)
+        lifecycleScope.launch {
+            db.favoriteDao().getAllFavorites().collectLatest { favorites ->
+                val items = favorites.map { entity ->
+                    FavoriteItem(
+                        id = entity.id,
+                        name = entity.name,
+                        lat = entity.lat,
+                        lng = entity.lng,
+                        note = entity.note
+                    )
+                }
+                favoriteAdapter.submitList(items)
+            }
+        }
+    }
+
+    private fun observeHistory() {
+        val db = AppDatabase.getInstance(this)
+        lifecycleScope.launch {
+            db.runHistoryDao().getAllRuns().collectLatest { runs ->
+                val items = runs.map { run ->
+                    RunHistoryItem(
+                        id = run.id,
+                        routeName = run.routeName,
+                        pointCount = run.pointCount,
+                        speedMode = run.speedMode,
+                        loopEnabled = run.loopEnabled,
+                        roundTripEnabled = run.roundTripEnabled,
+                        startedAt = run.startedAt,
+                        endedAt = run.endedAt,
+                        status = run.status
+                    )
+                }
+                historyAdapter.submitList(items)
+            }
+        }
+    }
+
+    private fun showRunDetails(item: RunHistoryItem) {
+        val db = AppDatabase.getInstance(this)
+        lifecycleScope.launch {
+            val events = db.gpsEventDao().getEventsForRun(item.id).first()
+            val eventItems = events.map {
+                GpsEventItem(
+                    timestamp = it.timestamp,
+                    lat = it.lat,
+                    lng = it.lng,
+                    accuracy = it.accuracy,
+                    speedMps = it.speedMps
+                )
+            }
+            renderRunDialog(item, eventItems)
+        }
+    }
+
+    private fun renderRunDialog(item: RunHistoryItem, events: List<GpsEventItem>) {
+        val count = events.size
+        val duration = if (item.endedAt != null) {
+            ((item.endedAt - item.startedAt) / 1000).coerceAtLeast(0)
+        } else null
+        val latest = events.lastOrNull()
+        val summary = StringBuilder().apply {
+            append("Points: ${item.pointCount}\n")
+            append("Events: $count\n")
+            if (duration != null) append("Duration: ${duration}s\n")
+            append("Status: ${item.status}\n")
+            if (latest != null) {
+                append("Last: ${latest.lat}, ${latest.lng}\n")
+                append("Speed: ${"%.2f".format(latest.speedMps)} m/s\n")
+            }
+        }.toString()
+
+        val view = layoutInflater.inflate(R.layout.dialog_run_details, null)
+        val summaryView = view.findViewById<android.widget.TextView>(R.id.textRunSummary)
+        val copyButton = view.findViewById<android.widget.Button>(R.id.buttonCopyCsv)
+        val recycler = view.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.recyclerEvents)
+
+        summaryView.text = summary
+        val eventAdapter = GpsEventAdapter()
+        recycler.layoutManager = LinearLayoutManager(this)
+        recycler.adapter = eventAdapter
+        eventAdapter.submitList(events)
+
+        copyButton.setOnClickListener {
+            val csv = buildCsv(events)
+            val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            val clip = android.content.ClipData.newPlainText("gps_events", csv)
+            clipboard.setPrimaryClip(clip)
+            Toast.makeText(this, getString(R.string.message_copied), Toast.LENGTH_SHORT).show()
+        }
+
+        android.app.AlertDialog.Builder(this)
+            .setTitle(getString(R.string.title_run_details))
+            .setView(view)
+            .setPositiveButton("OK", null)
+            .show()
+    }
+
+    private fun buildCsv(events: List<GpsEventItem>): String {
+        val sb = StringBuilder()
+        sb.append("timestamp,lat,lng,accuracy,speed_mps\n")
+        events.forEach { event ->
+            sb.append(event.timestamp).append(",")
+                .append(event.lat).append(",")
+                .append(event.lng).append(",")
+                .append(event.accuracy).append(",")
+                .append(String.format("%.2f", event.speedMps))
+                .append("\n")
+        }
+        return sb.toString()
+    }
+
     private fun saveRoute() {
         val name = binding.editRouteName.text.toString().trim()
         if (name.isEmpty()) {
@@ -372,6 +530,103 @@ class MainActivity : AppCompatActivity() {
         routePoints.clear()
         updateRouteLine()
         updatePointCount()
+    }
+
+    private fun addFavorite() {
+        val name = binding.editFavoriteName.text.toString().trim()
+        if (name.isEmpty()) {
+            binding.textError.setText(R.string.error_favorite_name)
+            return
+        }
+        val point = lastTappedPoint ?: run {
+            binding.textError.setText(R.string.error_favorite_point)
+            return
+        }
+        val entity = FavoriteEntity(
+            name = name,
+            lat = point.latitude,
+            lng = point.longitude,
+            note = null,
+            createdAt = System.currentTimeMillis()
+        )
+        val db = AppDatabase.getInstance(this)
+        lifecycleScope.launch {
+            db.favoriteDao().insert(entity)
+        }
+        binding.editFavoriteName.text?.clear()
+        binding.textError.text = ""
+    }
+
+    private fun deleteFavorite() {
+        val id = selectedFavoriteId ?: run {
+            binding.textError.setText(R.string.error_favorite_select)
+            return
+        }
+        val db = AppDatabase.getInstance(this)
+        lifecycleScope.launch {
+            db.favoriteDao().deleteById(id)
+        }
+        selectedFavoriteId = null
+    }
+
+    private fun showFavoriteEditDialog(item: FavoriteItem) {
+        val view = layoutInflater.inflate(R.layout.dialog_favorite_edit, null)
+        val nameField = view.findViewById<android.widget.EditText>(R.id.editFavoriteNameDialog)
+        val noteField = view.findViewById<android.widget.EditText>(R.id.editFavoriteNoteDialog)
+        val addToRouteButton = view.findViewById<android.widget.Button>(R.id.buttonAddToRouteDialog)
+        nameField.setText(item.name)
+        noteField.setText(item.note ?: "")
+        addToRouteButton.setOnClickListener {
+            addFavoriteToRoute(item)
+        }
+
+        android.app.AlertDialog.Builder(this)
+            .setTitle(getString(R.string.title_edit_favorite))
+            .setView(view)
+            .setPositiveButton(getString(R.string.button_save)) { _, _ ->
+                val newName = nameField.text.toString().trim()
+                if (newName.isEmpty()) {
+                    binding.textError.setText(R.string.error_favorite_name)
+                    return@setPositiveButton
+                }
+                val newNote = noteField.text.toString().trim().ifEmpty { null }
+                val db = AppDatabase.getInstance(this)
+                lifecycleScope.launch {
+                    db.favoriteDao().update(item.id, newName, newNote)
+                }
+            }
+            .setNeutralButton(getString(R.string.button_use_as_start)) { _, _ ->
+                useFavoriteAsStart(item)
+            }
+            .setNegativeButton(getString(R.string.button_cancel), null)
+            .show()
+    }
+
+    private fun useFavoriteAsStart(item: FavoriteItem) {
+        routePoints.clear()
+        routePoints.add(RoutePoint(item.lat, item.lng))
+        updateRouteLine()
+        updatePointCount()
+        selectedRouteId = null
+        binding.editRouteName.text?.clear()
+        mapLibre?.animateCamera(
+            CameraUpdateFactory.newLatLngZoom(
+                org.maplibre.android.geometry.LatLng(item.lat, item.lng),
+                15.5
+            )
+        )
+    }
+
+    private fun addFavoriteToRoute(item: FavoriteItem) {
+        routePoints.add(RoutePoint(item.lat, item.lng))
+        updateRouteLine()
+        updatePointCount()
+        mapLibre?.animateCamera(
+            CameraUpdateFactory.newLatLngZoom(
+                org.maplibre.android.geometry.LatLng(item.lat, item.lng),
+                15.5
+            )
+        )
     }
 
     private fun removeNearestPoint(lat: Double, lng: Double) {

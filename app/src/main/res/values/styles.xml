@@ -1,0 +1,21 @@
+<resources>
+    <style name="Widget.MockGps.Button.Primary" parent="">
+        <item name="android:background">@drawable/button_primary</item>
+        <item name="android:textColor">@color/white</item>
+    </style>
+
+    <style name="Widget.MockGps.Button.Secondary" parent="">
+        <item name="android:background">@drawable/button_secondary</item>
+        <item name="android:textColor">@color/slate_900</item>
+    </style>
+
+    <style name="Widget.MockGps.Input" parent="">
+        <item name="android:background">@drawable/input_bg</item>
+    </style>
+
+    <style name="Widget.MockGps.Card" parent="">
+        <item name="cardCornerRadius">12dp</item>
+        <item name="cardBackgroundColor">@color/white</item>
+        <item name="cardUseCompatPadding">true</item>
+    </style>
+</resources>

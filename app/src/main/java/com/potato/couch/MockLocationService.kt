@@ -14,8 +14,12 @@ import android.os.HandlerThread
 import android.os.IBinder
 import android.os.SystemClock
 import androidx.core.app.NotificationCompat
+import com.potato.couch.data.AppDatabase
+import com.potato.couch.data.GpsEventEntity
 import com.potato.couch.data.RouteJson
 import com.potato.couch.data.RoutePoint
+import com.potato.couch.data.RunHistoryEntity
+import java.util.concurrent.Executors
 
 class MockLocationService : Service() {
 
@@ -48,6 +52,9 @@ class MockLocationService : Service() {
     private var smoothedLat: Double? = null
     private var smoothedLng: Double? = null
     private var bouncePhase = 0.0
+    private var runId: Long = 0
+    private val db by lazy { AppDatabase.getInstance(this) }
+    private val dbExecutor = Executors.newSingleThreadExecutor()
 
     override fun onCreate() {
         super.onCreate()
@@ -105,6 +112,7 @@ class MockLocationService : Service() {
                     lastUpdateRealtime = SystemClock.elapsedRealtime()
                     setRunningFlag(true)
                     broadcastStatus(getString(R.string.status_running), "")
+                    insertRunHistory(points.size, speedMode)
                 }
             }
             ACTION_PAUSE_ROUTE -> {
@@ -119,6 +127,7 @@ class MockLocationService : Service() {
                 currentSegmentIndex = 0
                 distanceOnSegment = 0.0
                 isPaused = false
+                finishRunHistory(RUN_STATUS_STOPPED)
                 setRunningFlag(false)
                 broadcastStatus(getString(R.string.status_idle), "")
                 stopSelf()
@@ -131,6 +140,7 @@ class MockLocationService : Service() {
         super.onDestroy()
         stopRouteLoop()
         removeTestProvider()
+        finishRunHistory(RUN_STATUS_STOPPED)
         setRunningFlag(false)
         broadcastStatus(getString(R.string.status_idle), "")
     }
@@ -235,6 +245,7 @@ class MockLocationService : Service() {
 
         try {
             lm.setTestProviderLocation(LocationManager.GPS_PROVIDER, location)
+            logGpsEvent(location)
         } catch (_: SecurityException) {
             // Not authorized as mock location app.
             reportMockAppError()
@@ -369,6 +380,7 @@ class MockLocationService : Service() {
         }
 
         broadcastStatus(getString(R.string.status_idle), "")
+        finishRunHistory(RUN_STATUS_COMPLETED)
         setRunningFlag(false)
         stopSelf()
     }
@@ -417,6 +429,47 @@ class MockLocationService : Service() {
         )
     }
 
+    private fun insertRunHistory(pointCount: Int, speedMode: Int) {
+        val now = System.currentTimeMillis()
+        val entity = RunHistoryEntity(
+            routeName = null,
+            pointCount = pointCount,
+            speedMode = speedMode,
+            loopEnabled = isLoopEnabled,
+            roundTripEnabled = isRoundTripEnabled,
+            startedAt = now,
+            status = RUN_STATUS_RUNNING
+        )
+        dbExecutor.execute {
+            runId = db.runHistoryDao().insert(entity)
+        }
+    }
+
+    private fun finishRunHistory(status: String) {
+        if (runId <= 0) return
+        val end = System.currentTimeMillis()
+        val id = runId
+        runId = 0
+        dbExecutor.execute {
+            db.runHistoryDao().updateEnd(id, end, status)
+        }
+    }
+
+    private fun logGpsEvent(location: Location) {
+        if (runId <= 0) return
+        val event = GpsEventEntity(
+            runId = runId,
+            timestamp = System.currentTimeMillis(),
+            lat = location.latitude,
+            lng = location.longitude,
+            accuracy = location.accuracy,
+            speedMps = currentSegmentSpeed
+        )
+        dbExecutor.execute {
+            db.gpsEventDao().insert(event)
+        }
+    }
+
     private fun broadcastStatus(status: String, message: String) {
         val intent = Intent(ACTION_MOCK_STATUS).apply {
             putExtra(EXTRA_STATUS, status)
@@ -452,6 +505,9 @@ class MockLocationService : Service() {
         const val EXTRA_DRIFT_METERS = "extra_drift_meters"
         const val EXTRA_BOUNCE_METERS = "extra_bounce_meters"
         const val EXTRA_SMOOTHING_ALPHA = "extra_smoothing_alpha"
+        private const val RUN_STATUS_RUNNING = "RUNNING"
+        private const val RUN_STATUS_COMPLETED = "COMPLETED"
+        private const val RUN_STATUS_STOPPED = "STOPPED"
         private const val PREFS_NAME = "mock_prefs"
         private const val PREF_KEY_RUNNING = "mock_service_running"
         private const val UPDATE_INTERVAL_MS = 1000L

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <EditText
+        android:id="@+id/editFavoriteNameDialog"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/hint_favorite_name"
+        style="@style/Widget.MockGps.Input" />
+
+    <EditText
+        android:id="@+id/editFavoriteNoteDialog"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/hint_favorite_note"
+        style="@style/Widget.MockGps.Input"
+        android:layout_marginTop="8dp" />
+
+    <Button
+        android:id="@+id/buttonAddToRouteDialog"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/button_add_to_route"
+        style="@style/Widget.MockGps.Button.Primary"
+        android:layout_marginTop="10dp" />
+</LinearLayout>

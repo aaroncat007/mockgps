@@ -3,7 +3,8 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="@color/sand_50">
 
     <LinearLayout
         android:id="@+id/topPanel"
@@ -11,6 +12,7 @@
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:padding="16dp"
+        android:background="@color/white"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
@@ -21,7 +23,8 @@
             android:layout_height="wrap_content"
             android:text="@string/title_status"
             android:textStyle="bold"
-            android:textSize="18sp" />
+            android:textSize="18sp"
+            android:textColor="@color/slate_900" />
 
         <TextView
             android:id="@+id/textStatus"
@@ -29,6 +32,7 @@
             android:layout_height="wrap_content"
             android:text="@string/status_idle"
             android:textSize="16sp"
+            android:textColor="@color/slate_700"
             android:layout_marginTop="6dp" />
 
         <TextView
@@ -46,7 +50,14 @@
             android:layout_height="wrap_content"
             android:text="@string/instructions"
             android:textSize="14sp"
+            android:textColor="@color/slate_700"
             android:layout_marginTop="12dp" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/divider_light" />
 
         <TextView
             android:id="@+id/textPointCount"
@@ -54,6 +65,7 @@
             android:layout_height="wrap_content"
             android:text="Points: 0"
             android:textSize="13sp"
+            android:textColor="@color/slate_700"
             android:layout_marginTop="8dp" />
 
         <TextView
@@ -62,6 +74,7 @@
             android:layout_height="wrap_content"
             android:text="@string/hint_remove_point"
             android:textSize="12sp"
+            android:textColor="@color/slate_700"
             android:layout_marginTop="4dp" />
 
         <TextView
@@ -70,6 +83,7 @@
             android:layout_height="wrap_content"
             android:text="@string/hint_drag_point"
             android:textSize="12sp"
+            android:textColor="@color/slate_700"
             android:layout_marginTop="2dp" />
 
         <TextView
@@ -78,6 +92,7 @@
             android:layout_height="wrap_content"
             android:text="@string/label_speed_mode"
             android:textStyle="bold"
+            android:textColor="@color/slate_900"
             android:layout_marginTop="10dp" />
 
         <Spinner
@@ -92,6 +107,7 @@
             android:layout_height="wrap_content"
             android:text="@string/label_speed_presets"
             android:textStyle="bold"
+            android:textColor="@color/slate_900"
             android:layout_marginTop="8dp" />
 
         <LinearLayout
@@ -135,7 +151,8 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/label_speed_range"
-                android:textStyle="bold" />
+                android:textStyle="bold"
+                android:textColor="@color/slate_900" />
 
             <ImageView
                 android:id="@+id/iconSpeedInfo"
@@ -152,6 +169,7 @@
             android:layout_height="wrap_content"
             android:text="@string/hint_optional"
             android:textSize="12sp"
+            android:textColor="@color/slate_700"
             android:layout_marginTop="2dp" />
 
         <LinearLayout
@@ -160,13 +178,14 @@
             android:orientation="horizontal"
             android:layout_marginTop="6dp">
 
-            <EditText
-                android:id="@+id/editSpeedMin"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1.2"
-                android:inputType="numberDecimal"
-                android:hint="@string/hint_speed_min" />
+        <EditText
+            android:id="@+id/editSpeedMin"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1.2"
+            android:inputType="numberDecimal"
+            android:hint="@string/hint_speed_min"
+            style="@style/Widget.MockGps.Input" />
 
             <TextView
                 android:layout_width="wrap_content"
@@ -175,14 +194,15 @@
                 android:layout_marginStart="4dp"
                 android:layout_gravity="center_vertical" />
 
-            <EditText
-                android:id="@+id/editSpeedMax"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1.2"
-                android:inputType="numberDecimal"
-                android:hint="@string/hint_speed_max"
-                android:layout_marginStart="8dp" />
+        <EditText
+            android:id="@+id/editSpeedMax"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1.2"
+            android:inputType="numberDecimal"
+            android:hint="@string/hint_speed_max"
+            android:layout_marginStart="8dp"
+            style="@style/Widget.MockGps.Input" />
 
             <TextView
                 android:layout_width="wrap_content"
@@ -198,6 +218,7 @@
             android:layout_height="wrap_content"
             android:text="@string/hint_speed_valid"
             android:textSize="11sp"
+            android:textColor="@color/slate_700"
             android:layout_marginTop="2dp" />
 
         <LinearLayout
@@ -211,7 +232,8 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/label_pause_range"
-                android:textStyle="bold" />
+                android:textStyle="bold"
+                android:textColor="@color/slate_900" />
 
             <ImageView
                 android:id="@+id/iconPauseInfo"
@@ -228,6 +250,7 @@
             android:layout_height="wrap_content"
             android:text="@string/label_pause_presets"
             android:textStyle="bold"
+            android:textColor="@color/slate_900"
             android:layout_marginTop="6dp" />
 
         <LinearLayout
@@ -265,6 +288,7 @@
             android:layout_height="wrap_content"
             android:text="@string/hint_optional"
             android:textSize="12sp"
+            android:textColor="@color/slate_700"
             android:layout_marginTop="2dp" />
 
         <LinearLayout
@@ -273,13 +297,14 @@
             android:orientation="horizontal"
             android:layout_marginTop="6dp">
 
-            <EditText
-                android:id="@+id/editPauseMin"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1.2"
-                android:inputType="numberDecimal"
-                android:hint="@string/hint_pause_min" />
+        <EditText
+            android:id="@+id/editPauseMin"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1.2"
+            android:inputType="numberDecimal"
+            android:hint="@string/hint_pause_min"
+            style="@style/Widget.MockGps.Input" />
 
             <TextView
                 android:layout_width="wrap_content"
@@ -288,14 +313,15 @@
                 android:layout_marginStart="4dp"
                 android:layout_gravity="center_vertical" />
 
-            <EditText
-                android:id="@+id/editPauseMax"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1.2"
-                android:inputType="numberDecimal"
-                android:hint="@string/hint_pause_max"
-                android:layout_marginStart="8dp" />
+        <EditText
+            android:id="@+id/editPauseMax"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1.2"
+            android:inputType="numberDecimal"
+            android:hint="@string/hint_pause_max"
+            android:layout_marginStart="8dp"
+            style="@style/Widget.MockGps.Input" />
 
             <TextView
                 android:layout_width="wrap_content"
@@ -311,6 +337,7 @@
             android:layout_height="wrap_content"
             android:text="@string/hint_pause_valid"
             android:textSize="11sp"
+            android:textColor="@color/slate_700"
             android:layout_marginTop="2dp" />
 
         <Button
@@ -353,6 +380,7 @@
             android:layout_height="wrap_content"
             android:text="@string/label_realism"
             android:textStyle="bold"
+            android:textColor="@color/slate_900"
             android:layout_marginTop="10dp" />
 
         <LinearLayout
@@ -388,13 +416,14 @@
             android:orientation="horizontal"
             android:layout_marginTop="6dp">
 
-            <EditText
-                android:id="@+id/editDriftMeters"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:inputType="numberDecimal"
-                android:hint="@string/hint_drift_meters" />
+        <EditText
+            android:id="@+id/editDriftMeters"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:inputType="numberDecimal"
+            android:hint="@string/hint_drift_meters"
+            style="@style/Widget.MockGps.Input" />
 
             <TextView
                 android:layout_width="wrap_content"
@@ -410,13 +439,14 @@
             android:orientation="horizontal"
             android:layout_marginTop="6dp">
 
-            <EditText
-                android:id="@+id/editBounceMeters"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:inputType="numberDecimal"
-                android:hint="@string/hint_bounce_meters" />
+        <EditText
+            android:id="@+id/editBounceMeters"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:inputType="numberDecimal"
+            android:hint="@string/hint_bounce_meters"
+            style="@style/Widget.MockGps.Input" />
 
             <TextView
                 android:layout_width="wrap_content"
@@ -432,13 +462,14 @@
             android:orientation="horizontal"
             android:layout_marginTop="6dp">
 
-            <EditText
-                android:id="@+id/editSmoothingAlpha"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:inputType="numberDecimal"
-                android:hint="@string/hint_smoothing_alpha" />
+        <EditText
+            android:id="@+id/editSmoothingAlpha"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:inputType="numberDecimal"
+            android:hint="@string/hint_smoothing_alpha"
+            style="@style/Widget.MockGps.Input" />
 
             <TextView
                 android:layout_width="wrap_content"
@@ -453,6 +484,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/button_dev_options"
+            style="@style/Widget.MockGps.Button.Primary"
             android:layout_marginTop="12dp" />
 
         <Button
@@ -460,6 +492,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/button_location_settings"
+            style="@style/Widget.MockGps.Button.Secondary"
             android:layout_marginTop="8dp" />
 
         <LinearLayout
@@ -473,7 +506,8 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="@string/button_start" />
+                android:text="@string/button_start"
+                style="@style/Widget.MockGps.Button.Primary" />
 
             <Button
                 android:id="@+id/buttonPause"
@@ -481,6 +515,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="@string/button_pause"
+                style="@style/Widget.MockGps.Button.Secondary"
                 android:layout_marginStart="8dp" />
 
             <Button
@@ -489,18 +524,27 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="@string/button_stop"
+                style="@style/Widget.MockGps.Button.Primary"
                 android:layout_marginStart="8dp" />
         </LinearLayout>
     </LinearLayout>
 
-    <org.maplibre.android.maps.MapView
-        android:id="@+id/mapView"
+    <androidx.cardview.widget.CardView
+        android:id="@+id/mapCard"
         android:layout_width="0dp"
         android:layout_height="0dp"
+        android:layout_margin="10dp"
+        style="@style/Widget.MockGps.Card"
         app:layout_constraintTop_toBottomOf="@id/topPanel"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintBottom_toTopOf="@id/bottomPanel" />
+        app:layout_constraintBottom_toTopOf="@id/bottomPanel">
+
+        <org.maplibre.android.maps.MapView
+            android:id="@+id/mapView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+    </androidx.cardview.widget.CardView>
 
     <LinearLayout
         android:id="@+id/bottomPanel"
@@ -508,6 +552,7 @@
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:padding="16dp"
+        android:background="@color/sand_50"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
@@ -516,7 +561,8 @@
             android:id="@+id/editRouteName"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="@string/route_name_hint" />
+            android:hint="@string/route_name_hint"
+            style="@style/Widget.MockGps.Input" />
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -529,7 +575,8 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="@string/button_save_route" />
+                android:text="@string/button_save_route"
+                style="@style/Widget.MockGps.Button.Primary" />
 
             <Button
                 android:id="@+id/buttonClearRoute"
@@ -537,6 +584,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="@string/button_clear_route"
+                style="@style/Widget.MockGps.Button.Secondary"
                 android:layout_marginStart="8dp" />
         </LinearLayout>
 
@@ -545,6 +593,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/button_undo_point"
+            style="@style/Widget.MockGps.Button.Secondary"
             android:layout_marginTop="8dp" />
 
         <Button
@@ -552,6 +601,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/button_rename_route"
+            style="@style/Widget.MockGps.Button.Secondary"
             android:layout_marginTop="8dp" />
 
         <TextView
@@ -572,7 +622,96 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/button_delete_route"
+            style="@style/Widget.MockGps.Button.Primary"
             android:layout_marginTop="8dp" />
+
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:layout_marginBottom="10dp"
+            android:layout_gravity="center"
+            style="@style/Widget.MockGps.Card">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView
+                    android:id="@+id/labelFavorites"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/label_favorites"
+                    android:textStyle="bold" />
+
+                <EditText
+                    android:id="@+id/editFavoriteName"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="@string/hint_favorite_name"
+                    style="@style/Widget.MockGps.Input"
+                    android:layout_marginTop="6dp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="6dp">
+
+                    <Button
+                        android:id="@+id/buttonAddFavorite"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/button_add_favorite"
+                        style="@style/Widget.MockGps.Button.Primary" />
+
+                    <Button
+                        android:id="@+id/buttonDeleteFavorite"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/button_delete_favorite"
+                        style="@style/Widget.MockGps.Button.Secondary"
+                        android:layout_marginStart="8dp" />
+                </LinearLayout>
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/recyclerFavorites"
+                    android:layout_width="match_parent"
+                    android:layout_height="120dp"
+                    android:layout_marginTop="6dp" />
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            style="@style/Widget.MockGps.Card">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView
+                    android:id="@+id/labelHistory"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/label_history"
+                    android:textStyle="bold" />
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/recyclerHistory"
+                    android:layout_width="match_parent"
+                    android:layout_height="140dp"
+                    android:layout_marginTop="6dp" />
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
     </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
