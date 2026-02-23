@@ -11,10 +11,14 @@ import android.location.LocationManager
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.text.InputFilter
+import android.text.Spanned
 import android.view.MotionEvent
+import android.widget.EditText
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.potato.couch.data.AppDatabase
@@ -75,6 +79,8 @@ class MainActivity : AppCompatActivity() {
 
         observeRoutes()
         bindActions()
+        setupInputFilters()
+        setupTooltips()
     }
 
     private fun bindActions() {
@@ -100,11 +106,60 @@ class MainActivity : AppCompatActivity() {
             stopRoutePlayback()
         }
 
+        binding.spinnerSpeedMode.setOnItemSelectedListener(
+            object : android.widget.AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(
+                    parent: android.widget.AdapterView<*>?,
+                    view: android.view.View?,
+                    position: Int,
+                    id: Long
+                ) {
+                    applySpeedDefaultsIfEmpty(position)
+                }
+
+                override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
+            }
+        )
+
+        binding.buttonPresetWalk.setOnClickListener {
+            applySpeedPreset(0)
+            binding.spinnerSpeedMode.setSelection(0)
+        }
+
+        binding.buttonPresetJog.setOnClickListener {
+            applySpeedPreset(1)
+            binding.spinnerSpeedMode.setSelection(1)
+        }
+
+        binding.buttonPresetDrive.setOnClickListener {
+            applySpeedPreset(2)
+            binding.spinnerSpeedMode.setSelection(2)
+        }
+
+        binding.buttonPresetPauseNone.setOnClickListener {
+            applyPausePreset(0)
+        }
+
+        binding.buttonPresetPauseShort.setOnClickListener {
+            applyPausePreset(1)
+        }
+
+        binding.buttonPresetPauseLong.setOnClickListener {
+            applyPausePreset(2)
+        }
+
+        binding.buttonClearPause.setOnClickListener {
+            binding.editPauseMin.text?.clear()
+            binding.editPauseMax.text?.clear()
+        }
+
         binding.checkRoundTrip.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) {
                 binding.checkLoop.isChecked = false
             }
         }
+
+        attachRangeWatchers()
 
         binding.buttonSaveRoute.setOnClickListener {
             saveRoute()
@@ -404,21 +459,39 @@ class MainActivity : AppCompatActivity() {
             return
         }
         val speedMode = binding.spinnerSpeedMode.selectedItemPosition
-        val speedMin = binding.editSpeedMin.text.toString().toDoubleOrNull() ?: 0.0
-        val speedMax = binding.editSpeedMax.text.toString().toDoubleOrNull() ?: 0.0
-        val pauseMin = binding.editPauseMin.text.toString().toDoubleOrNull() ?: 0.0
-        val pauseMax = binding.editPauseMax.text.toString().toDoubleOrNull() ?: 0.0
+        val speedMinText = binding.editSpeedMin.text.toString().trim()
+        val speedMaxText = binding.editSpeedMax.text.toString().trim()
+        val pauseMinText = binding.editPauseMin.text.toString().trim()
+        val pauseMaxText = binding.editPauseMax.text.toString().trim()
         val randomSpeed = binding.checkRandomSpeed.isChecked
         val loopEnabled = binding.checkLoop.isChecked
         val roundTripEnabled = binding.checkRoundTrip.isChecked
+
+        if (!validateRanges(showError = true)) {
+            return
+        }
+
+        val speedRange = normalizeRange(speedMinText, speedMaxText, MAX_SPEED_KMH)
+        if (speedRange == null) {
+            binding.textStatus.setText(R.string.status_error)
+            binding.textError.setText(R.string.error_speed_range)
+            return
+        }
+
+        val pauseRange = normalizeRange(pauseMinText, pauseMaxText, MAX_PAUSE_SEC)
+        if (pauseRange == null) {
+            binding.textStatus.setText(R.string.status_error)
+            binding.textError.setText(R.string.error_pause_range)
+            return
+        }
         val intent = Intent(this, MockLocationService::class.java).apply {
             action = MockLocationService.ACTION_START_ROUTE
             putExtra(MockLocationService.EXTRA_ROUTE_JSON, RouteJson.toJson(routePoints))
             putExtra(MockLocationService.EXTRA_SPEED_MODE, speedMode)
-            putExtra(MockLocationService.EXTRA_SPEED_MIN_KMH, speedMin)
-            putExtra(MockLocationService.EXTRA_SPEED_MAX_KMH, speedMax)
-            putExtra(MockLocationService.EXTRA_PAUSE_MIN_SEC, pauseMin)
-            putExtra(MockLocationService.EXTRA_PAUSE_MAX_SEC, pauseMax)
+            putExtra(MockLocationService.EXTRA_SPEED_MIN_KMH, speedRange.first)
+            putExtra(MockLocationService.EXTRA_SPEED_MAX_KMH, speedRange.second)
+            putExtra(MockLocationService.EXTRA_PAUSE_MIN_SEC, pauseRange.first)
+            putExtra(MockLocationService.EXTRA_PAUSE_MAX_SEC, pauseRange.second)
             putExtra(MockLocationService.EXTRA_RANDOM_SPEED, randomSpeed)
             putExtra(MockLocationService.EXTRA_LOOP_ENABLED, loopEnabled)
             putExtra(MockLocationService.EXTRA_ROUNDTRIP_ENABLED, roundTripEnabled)
@@ -426,6 +499,154 @@ class MainActivity : AppCompatActivity() {
         ContextCompat.startForegroundService(this, intent)
         binding.textStatus.setText(R.string.status_running)
         binding.textError.text = ""
+    }
+
+    private fun normalizeRange(minText: String, maxText: String, maxAllowed: Double? = null): Pair<Double, Double>? {
+        if (minText.isEmpty() && maxText.isEmpty()) return 0.0 to 0.0
+        val min = if (minText.isEmpty()) null else minText.toDoubleOrNull()
+        val max = if (maxText.isEmpty()) null else maxText.toDoubleOrNull()
+        if (min == null && max == null) return null
+        val safeMin = min ?: max ?: return null
+        val safeMax = max ?: min ?: return null
+        if (safeMin < 0.0 || safeMax < 0.0) return null
+        if (safeMax < safeMin) return null
+        if (maxAllowed != null && (safeMin > maxAllowed || safeMax > maxAllowed)) return null
+        return safeMin to safeMax
+    }
+
+    private fun applySpeedDefaultsIfEmpty(mode: Int) {
+        val minText = binding.editSpeedMin.text.toString().trim()
+        val maxText = binding.editSpeedMax.text.toString().trim()
+        if (minText.isNotEmpty() || maxText.isNotEmpty()) return
+        val (min, max) = when (mode) {
+            1 -> 6.0 to 10.0   // Jog
+            2 -> 30.0 to 60.0  // Drive
+            else -> 3.0 to 5.0 // Walk
+        }
+        binding.editSpeedMin.setText(min.toString())
+        binding.editSpeedMax.setText(max.toString())
+    }
+
+    private fun applySpeedPreset(mode: Int) {
+        val (min, max) = when (mode) {
+            1 -> 6.0 to 10.0   // Jog
+            2 -> 30.0 to 60.0  // Drive
+            else -> 3.0 to 5.0 // Walk
+        }
+        binding.editSpeedMin.setText(min.toString())
+        binding.editSpeedMax.setText(max.toString())
+    }
+
+    private fun applyPausePreset(mode: Int) {
+        val (min, max) = when (mode) {
+            1 -> 2.0 to 5.0   // Short
+            2 -> 8.0 to 15.0  // Long
+            else -> 0.0 to 0.0 // No pause
+        }
+        binding.editPauseMin.setText(min.toString())
+        binding.editPauseMax.setText(max.toString())
+    }
+
+    private fun setupInputFilters() {
+        val filter = DecimalInputFilter()
+        binding.editSpeedMin.filters = arrayOf(filter)
+        binding.editSpeedMax.filters = arrayOf(filter)
+        binding.editPauseMin.filters = arrayOf(filter)
+        binding.editPauseMax.filters = arrayOf(filter)
+    }
+
+    private fun setupTooltips() {
+        ViewCompat.setTooltipText(binding.iconSpeedInfo, getString(R.string.tooltip_speed_range))
+        ViewCompat.setTooltipText(binding.iconPauseInfo, getString(R.string.tooltip_pause_range))
+    }
+
+    private fun attachRangeWatchers() {
+        val watcher = SimpleTextWatcher {
+            validateRanges(showError = false)
+        }
+        binding.editSpeedMin.addTextChangedListener(watcher)
+        binding.editSpeedMax.addTextChangedListener(watcher)
+        binding.editPauseMin.addTextChangedListener(watcher)
+        binding.editPauseMax.addTextChangedListener(watcher)
+    }
+
+    private fun validateRanges(showError: Boolean): Boolean {
+        val speedRange = normalizeRange(
+            binding.editSpeedMin.text.toString().trim(),
+            binding.editSpeedMax.text.toString().trim(),
+            MAX_SPEED_KMH
+        )
+        if (speedRange == null) {
+            if (showError) {
+                binding.textStatus.setText(R.string.status_error)
+                binding.textError.setText(R.string.error_speed_range)
+                setRangeError(binding.editSpeedMin, binding.editSpeedMax, true, R.string.error_speed_range)
+            }
+            return false
+        } else {
+            setRangeError(binding.editSpeedMin, binding.editSpeedMax, false, R.string.error_speed_range)
+        }
+
+        val pauseRange = normalizeRange(
+            binding.editPauseMin.text.toString().trim(),
+            binding.editPauseMax.text.toString().trim(),
+            MAX_PAUSE_SEC
+        )
+        if (pauseRange == null) {
+            if (showError) {
+                binding.textStatus.setText(R.string.status_error)
+                binding.textError.setText(R.string.error_pause_range)
+                setRangeError(binding.editPauseMin, binding.editPauseMax, true, R.string.error_pause_range)
+            }
+            return false
+        } else {
+            setRangeError(binding.editPauseMin, binding.editPauseMax, false, R.string.error_pause_range)
+        }
+
+        if (!showError) {
+            binding.textError.text = ""
+        }
+        return true
+    }
+
+    private fun setRangeError(
+        minField: EditText,
+        maxField: EditText,
+        hasError: Boolean,
+        messageRes: Int
+    ) {
+        if (hasError) {
+            val message = getString(messageRes)
+            minField.error = message
+            maxField.error = message
+        } else {
+            minField.error = null
+            maxField.error = null
+        }
+    }
+
+    private class DecimalInputFilter : InputFilter {
+        private val pattern = Regex("^\\d*(\\.\\d{0,2})?$")
+
+        override fun filter(
+            source: CharSequence,
+            start: Int,
+            end: Int,
+            dest: Spanned,
+            dstart: Int,
+            dend: Int
+        ): CharSequence? {
+            val newValue = StringBuilder(dest)
+                .replace(dstart, dend, source.subSequence(start, end).toString())
+                .toString()
+            return if (pattern.matches(newValue)) null else ""
+        }
+    }
+
+    private class SimpleTextWatcher(private val onChange: () -> Unit) : android.text.TextWatcher {
+        override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+        override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+        override fun afterTextChanged(s: android.text.Editable?) = onChange()
     }
 
     private fun pauseRoutePlayback() {
@@ -539,6 +760,8 @@ class MainActivity : AppCompatActivity() {
         private const val REQUEST_NOTIFICATION_PERMISSION = 1002
         private const val PREFS_NAME = "mock_prefs"
         private const val PREF_KEY_RUNNING = "mock_service_running"
+        private const val MAX_SPEED_KMH = 200.0
+        private const val MAX_PAUSE_SEC = 120.0
         private const val MAP_STYLE_URL = "https://demotiles.maplibre.org/style.json"
         private const val ROUTE_SOURCE_ID = "route-source"
         private const val ROUTE_LAYER_ID = "route-layer"

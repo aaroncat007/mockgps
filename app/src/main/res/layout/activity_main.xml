@@ -87,12 +87,72 @@
             android:entries="@array/speed_modes" />
 
         <TextView
-            android:id="@+id/labelSpeedRange"
+            android:id="@+id/labelSpeedPresets"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/label_speed_range"
+            android:text="@string/label_speed_presets"
             android:textStyle="bold"
             android:layout_marginTop="8dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="4dp">
+
+            <Button
+                android:id="@+id/buttonPresetWalk"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/button_preset_walk" />
+
+            <Button
+                android:id="@+id/buttonPresetJog"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/button_preset_jog"
+                android:layout_marginStart="6dp" />
+
+            <Button
+                android:id="@+id/buttonPresetDrive"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/button_preset_drive"
+                android:layout_marginStart="6dp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="8dp">
+
+            <TextView
+                android:id="@+id/labelSpeedRange"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/label_speed_range"
+                android:textStyle="bold" />
+
+            <ImageView
+                android:id="@+id/iconSpeedInfo"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:layout_marginStart="6dp"
+                android:contentDescription="@string/content_info"
+                android:src="@android:drawable/ic_dialog_info" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/textSpeedHint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/hint_optional"
+            android:textSize="12sp"
+            android:layout_marginTop="2dp" />
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -104,27 +164,108 @@
                 android:id="@+id/editSpeedMin"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
+                android:layout_weight="1.2"
                 android:inputType="numberDecimal"
                 android:hint="@string/hint_speed_min" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/unit_kmh"
+                android:layout_marginStart="4dp"
+                android:layout_gravity="center_vertical" />
 
             <EditText
                 android:id="@+id/editSpeedMax"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
+                android:layout_weight="1.2"
                 android:inputType="numberDecimal"
                 android:hint="@string/hint_speed_max"
                 android:layout_marginStart="8dp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/unit_kmh"
+                android:layout_marginStart="4dp"
+                android:layout_gravity="center_vertical" />
         </LinearLayout>
 
         <TextView
-            android:id="@+id/labelPauseRange"
+            android:id="@+id/textSpeedRangeHint"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/label_pause_range"
+            android:text="@string/hint_speed_valid"
+            android:textSize="11sp"
+            android:layout_marginTop="2dp" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="8dp">
+
+            <TextView
+                android:id="@+id/labelPauseRange"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/label_pause_range"
+                android:textStyle="bold" />
+
+            <ImageView
+                android:id="@+id/iconPauseInfo"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:layout_marginStart="6dp"
+                android:contentDescription="@string/content_info"
+                android:src="@android:drawable/ic_dialog_info" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/labelPausePresets"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/label_pause_presets"
             android:textStyle="bold"
-            android:layout_marginTop="8dp" />
+            android:layout_marginTop="6dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="4dp">
+
+            <Button
+                android:id="@+id/buttonPresetPauseNone"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/button_preset_pause_none" />
+
+            <Button
+                android:id="@+id/buttonPresetPauseShort"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/button_preset_pause_short"
+                android:layout_marginStart="6dp" />
+
+            <Button
+                android:id="@+id/buttonPresetPauseLong"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/button_preset_pause_long"
+                android:layout_marginStart="6dp" />
+        </LinearLayout>
+        <TextView
+            android:id="@+id/textPauseHint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/hint_optional"
+            android:textSize="12sp"
+            android:layout_marginTop="2dp" />
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -136,19 +277,48 @@
                 android:id="@+id/editPauseMin"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
+                android:layout_weight="1.2"
                 android:inputType="numberDecimal"
                 android:hint="@string/hint_pause_min" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/unit_sec"
+                android:layout_marginStart="4dp"
+                android:layout_gravity="center_vertical" />
 
             <EditText
                 android:id="@+id/editPauseMax"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
+                android:layout_weight="1.2"
                 android:inputType="numberDecimal"
                 android:hint="@string/hint_pause_max"
                 android:layout_marginStart="8dp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/unit_sec"
+                android:layout_marginStart="4dp"
+                android:layout_gravity="center_vertical" />
         </LinearLayout>
+
+        <TextView
+            android:id="@+id/textPauseRangeHint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/hint_pause_valid"
+            android:textSize="11sp"
+            android:layout_marginTop="2dp" />
+
+        <Button
+            android:id="@+id/buttonClearPause"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/button_clear_pause"
+            android:layout_marginTop="6dp" />
 
         <LinearLayout
             android:layout_width="match_parent"
