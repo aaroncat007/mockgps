@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.PointF
+import android.graphics.Bitmap
 import android.location.LocationManager
 import android.os.Build
 import android.os.Bundle
@@ -119,7 +120,7 @@ class MainActivity : AppCompatActivity() {
             }
             output.use { stream ->
                 try {
-                    val name = binding.editRouteName.text.toString().trim().ifEmpty { "Route" }
+                    val name = "SofaWander Route"
                     RouteFileIO.writeGpx(stream, name, routePoints)
                 } catch (_: Exception) {
                     binding.textError.setText(R.string.error_export_failed)
@@ -140,7 +141,7 @@ class MainActivity : AppCompatActivity() {
             }
             output.use { stream ->
                 try {
-                    val name = binding.editRouteName.text.toString().trim().ifEmpty { "Route" }
+                    val name = "SofaWander Route"
                     RouteFileIO.writeKml(stream, name, routePoints)
                 } catch (_: Exception) {
                     binding.textError.setText(R.string.error_export_failed)
@@ -292,9 +293,8 @@ class MainActivity : AppCompatActivity() {
 
         binding.buttonClearRoute.setOnClickListener {
             routePoints.clear()
-            updateRouteLine()
             selectedRouteId = null
-            binding.editRouteName.text?.clear()
+            updateRouteLine()
             updatePointCount()
         }
 
@@ -306,38 +306,13 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        binding.buttonRenameRoute.setOnClickListener {
-            renameSelectedRoute()
+        binding.btnRouteEditorClose.setOnClickListener {
+            binding.layoutRouteEditor.visibility = android.view.View.GONE
         }
 
-        binding.buttonImportRoute.setOnClickListener {
-            openDocumentLauncher.launch(
-                arrayOf(
-                    "application/gpx+xml",
-                    "application/vnd.google-earth.kml+xml",
-                    "application/xml",
-                    "text/xml",
-                    "*/*"
-                )
-            )
-        }
-
-        binding.buttonExportRoute.setOnClickListener {
-            val name = binding.editRouteName.text.toString().trim().ifEmpty { "route" }
-            createGpxLauncher.launch("${name}.gpx")
-        }
-
-        binding.buttonExportRouteKml.setOnClickListener {
-            val name = binding.editRouteName.text.toString().trim().ifEmpty { "route" }
-            createKmlLauncher.launch("${name}.kml")
-        }
-
-        binding.buttonDeleteRoute.setOnClickListener {
-            deleteSelectedRoute()
-        }
-
-        binding.buttonAddFavorite.setOnClickListener {
-            addFavorite()
+        binding.btnRoutePlanning.setOnClickListener {
+            val visible = binding.layoutRouteEditor.visibility == android.view.View.VISIBLE
+            binding.layoutRouteEditor.visibility = if (visible) android.view.View.GONE else android.view.View.VISIBLE
         }
 
         binding.btnFavorites.setOnClickListener {
@@ -346,10 +321,6 @@ class MainActivity : AppCompatActivity() {
 
         binding.btnSettings.setOnClickListener {
             binding.drawerLayout.open()
-        }
-
-        binding.btnRoutePlanning.setOnClickListener {
-            Toast.makeText(this, "Route Planning feature coming soon", Toast.LENGTH_SHORT).show()
         }
 
         binding.btnWalkMenu.setOnClickListener {
@@ -375,16 +346,20 @@ class MainActivity : AppCompatActivity() {
             }
 
             map.addOnMapClickListener { point ->
-                routePoints.add(RoutePoint(point.latitude, point.longitude))
-                lastTappedPoint = RoutePoint(point.latitude, point.longitude)
-                updateRouteLine()
-                updatePointCount()
+                if (binding.layoutRouteEditor.visibility == android.view.View.VISIBLE) {
+                    routePoints.add(RoutePoint(point.latitude, point.longitude))
+                    lastTappedPoint = RoutePoint(point.latitude, point.longitude)
+                    updateRouteLine()
+                    updatePointCount()
+                }
                 true
             }
 
             map.addOnMapLongClickListener { point ->
-                if (!tryStartDrag(point.latitude, point.longitude)) {
-                    removeNearestPoint(point.latitude, point.longitude)
+                if (binding.layoutRouteEditor.visibility == android.view.View.VISIBLE) {
+                    if (!tryStartDrag(point.latitude, point.longitude)) {
+                        removeNearestPoint(point.latitude, point.longitude)
+                    }
                 }
                 true
             }
@@ -495,6 +470,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupMapLayers(style: Style) {
+        // 登錄圖示
+        getBitmapFromVectorDrawable(this, R.drawable.ic_route_pin)?.let { bitmap ->
+            style.addImage("route-pin-icon", bitmap)
+        }
+        getBitmapFromVectorDrawable(this, R.drawable.ic_route_arrow)?.let { bitmap ->
+            style.addImage("route-arrow-icon", bitmap)
+        }
+
         if (style.getSourceAs<GeoJsonSource>(ROUTE_SOURCE_ID) == null) {
             style.addSource(GeoJsonSource(ROUTE_SOURCE_ID))
         }
@@ -505,23 +488,56 @@ class MainActivity : AppCompatActivity() {
         if (style.getLayer(ROUTE_LAYER_ID) == null) {
             val lineLayer = LineLayer(ROUTE_LAYER_ID, ROUTE_SOURCE_ID).withProperties(
                 PropertyFactory.lineColor(MAP_ROUTE_COLOR),
-                PropertyFactory.lineWidth(4f)
+                PropertyFactory.lineWidth(6f),
+                PropertyFactory.lineJoin(org.maplibre.android.style.layers.Property.LINE_JOIN_ROUND),
+                PropertyFactory.lineCap(org.maplibre.android.style.layers.Property.LINE_CAP_ROUND)
             )
             style.addLayer(lineLayer)
         }
 
+        // 加入沿著路徑方向的路徑箭頭 (Arrow)
+        if (style.getLayer(ROUTE_ARROW_LAYER_ID) == null) {
+            val arrowLayer = org.maplibre.android.style.layers.SymbolLayer(
+                ROUTE_ARROW_LAYER_ID,
+                ROUTE_SOURCE_ID
+            ).withProperties(
+                PropertyFactory.symbolPlacement(org.maplibre.android.style.layers.Property.SYMBOL_PLACEMENT_LINE),
+                PropertyFactory.iconImage("route-arrow-icon"),
+                PropertyFactory.iconSize(0.8f),
+                PropertyFactory.symbolSpacing(50f),
+                PropertyFactory.iconAllowOverlap(true),
+                PropertyFactory.iconIgnorePlacement(true)
+            )
+            style.addLayerAbove(arrowLayer, ROUTE_LAYER_ID)
+        }
+
+        // 以圖標 (Pin) 替代原本的 CircleLayer 作為點擊節點
         if (style.getLayer(POINTS_LAYER_ID) == null) {
-            val circleLayer = org.maplibre.android.style.layers.CircleLayer(
+            val symbolLayer = org.maplibre.android.style.layers.SymbolLayer(
                 POINTS_LAYER_ID,
                 POINTS_SOURCE_ID
             ).withProperties(
-                PropertyFactory.circleColor(MAP_POINT_COLOR),
-                PropertyFactory.circleRadius(4f),
-                PropertyFactory.circleStrokeColor(MAP_POINT_STROKE),
-                PropertyFactory.circleStrokeWidth(1f)
+                PropertyFactory.iconImage("route-pin-icon"),
+                PropertyFactory.iconSize(1.5f),
+                PropertyFactory.iconAnchor(org.maplibre.android.style.layers.Property.ICON_ANCHOR_BOTTOM),
+                PropertyFactory.iconAllowOverlap(true),
+                PropertyFactory.iconIgnorePlacement(true)
             )
-            style.addLayerAbove(circleLayer, ROUTE_LAYER_ID)
+            style.addLayerAbove(symbolLayer, ROUTE_ARROW_LAYER_ID)
         }
+    }
+
+    private fun getBitmapFromVectorDrawable(context: Context, drawableId: Int): Bitmap? {
+        val drawable = ContextCompat.getDrawable(context, drawableId) ?: return null
+        val bitmap = Bitmap.createBitmap(
+            drawable.intrinsicWidth,
+            drawable.intrinsicHeight,
+            Bitmap.Config.ARGB_8888
+        )
+        val canvas = android.graphics.Canvas(bitmap)
+        drawable.setBounds(0, 0, canvas.width, canvas.height)
+        drawable.draw(canvas)
+        return bitmap
     }
 
     private fun loadRoute(item: RouteItem) {
@@ -530,7 +546,7 @@ class MainActivity : AppCompatActivity() {
         routePoints.addAll(item.points)
         updateRouteLine()
         updatePointCount()
-        binding.editRouteName.setText(item.name)
+        
         item.points.firstOrNull()?.let { point ->
             mapLibre?.animateCamera(
                 CameraUpdateFactory.newLatLngZoom(
@@ -834,28 +850,39 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun saveRoute() {
-        val name = binding.editRouteName.text.toString().trim()
-        if (name.isEmpty()) {
-            binding.textError.setText(R.string.error_route_name)
-            return
-        }
         if (routePoints.size < 2) {
-            binding.textError.setText(R.string.error_route_points)
+            Toast.makeText(this, R.string.error_route_points, Toast.LENGTH_SHORT).show()
             return
         }
 
-        val entity = RouteEntity(
-            name = name,
-            pointsJson = RouteJson.toJson(routePoints),
-            createdAt = System.currentTimeMillis()
-        )
+        val input = android.widget.EditText(this)
+        input.hint = getString(R.string.route_name_hint)
 
-        val db = AppDatabase.getInstance(this)
-        lifecycleScope.launch {
-            db.routeDao().insert(entity)
-        }
-        binding.editRouteName.text?.clear()
-        binding.textError.text = ""
+        android.app.AlertDialog.Builder(this)
+            .setTitle(R.string.button_save_route)
+            .setView(input)
+            .setPositiveButton(R.string.button_save) { _, _ ->
+                val name = input.text.toString().trim()
+                if (name.isEmpty()) {
+                    Toast.makeText(this, R.string.error_route_name, Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+
+                val entity = RouteEntity(
+                    name = name,
+                    pointsJson = RouteJson.toJson(routePoints),
+                    createdAt = System.currentTimeMillis()
+                )
+
+                val db = AppDatabase.getInstance(this)
+                lifecycleScope.launch {
+                    db.routeDao().insert(entity)
+                    binding.layoutRouteEditor.visibility = android.view.View.GONE
+                    Toast.makeText(this@MainActivity, "Route saved", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton(R.string.button_cancel, null)
+            .show()
     }
 
     private fun renameSelectedRoute() {
@@ -863,33 +890,7 @@ class MainActivity : AppCompatActivity() {
             binding.textError.setText(R.string.error_route_select)
             return
         }
-        val name = binding.editRouteName.text.toString().trim()
-        if (name.isEmpty()) {
-            binding.textError.setText(R.string.error_route_name)
-            return
-        }
-
-        val db = AppDatabase.getInstance(this)
-        lifecycleScope.launch {
-            db.routeDao().rename(id, name)
-        }
         binding.textError.text = ""
-    }
-
-    private fun deleteSelectedRoute() {
-        val id = adapter.getSelectedId() ?: run {
-            binding.textError.setText(R.string.error_route_select)
-            return
-        }
-        val db = AppDatabase.getInstance(this)
-        lifecycleScope.launch {
-            db.routeDao().deleteById(id)
-        }
-        selectedRouteId = null
-        binding.editRouteName.text?.clear()
-        routePoints.clear()
-        updateRouteLine()
-        updatePointCount()
     }
 
     private fun addFavorite() {
@@ -956,7 +957,6 @@ class MainActivity : AppCompatActivity() {
         updateRouteLine()
         updatePointCount()
         selectedRouteId = null
-        binding.editRouteName.text?.clear()
         mapLibre?.animateCamera(
             CameraUpdateFactory.newLatLngZoom(
                 org.maplibre.android.geometry.LatLng(item.lat, item.lng),
@@ -1434,13 +1434,17 @@ class MainActivity : AppCompatActivity() {
         private const val MAX_DRIFT_METERS = 50.0
         private const val MAX_BOUNCE_METERS = 50.0
         private const val MAX_SMOOTHING_ALPHA = 1.0
+        private const val REQUEST_CODE_PERMISSIONS = 1001
         private const val MAP_STYLE_URL = "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json"
+        
         private const val ROUTE_SOURCE_ID = "route-source"
         private const val ROUTE_LAYER_ID = "route-layer"
+        private const val ROUTE_ARROW_LAYER_ID = "route-arrow-layer"
         private const val POINTS_SOURCE_ID = "points-source"
         private const val POINTS_LAYER_ID = "points-layer"
-        private const val MAP_ROUTE_COLOR = "#1E88E5"
-        private const val MAP_POINT_COLOR = "#FF7043"
+
+        private const val MAP_ROUTE_COLOR = "#2196F3"
+        private const val MAP_POINT_COLOR = "#FF5722"
         private const val MAP_POINT_STROKE = "#FFFFFF"
     }
 }
