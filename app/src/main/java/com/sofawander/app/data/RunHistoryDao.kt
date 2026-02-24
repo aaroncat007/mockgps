@@ -9,10 +9,13 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface RunHistoryDao {
     @Query("SELECT * FROM run_history ORDER BY started_at DESC")
-    fun getAllRuns(): Flow<List<RunHistoryEntity>>
+    fun getAllHistoryFlow(): Flow<List<RunHistoryEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(run: RunHistoryEntity): Long
+
+    @Query("SELECT * FROM run_history WHERE id = :id")
+    suspend fun getById(id: Long): RunHistoryEntity?
 
     @Query("UPDATE run_history SET ended_at = :endedAt, status = :status WHERE id = :id")
     suspend fun updateEnd(id: Long, endedAt: Long, status: String)

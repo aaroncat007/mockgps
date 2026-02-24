@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <PreferenceCategory app:title="移動速度設定 (km/h)">
+        <EditTextPreference
+            app:key="pref_speed_walk"
+            app:title="步行速度 (Walk)"
+            app:summary="預設為 9.0"
+            app:defaultValue="9.0"
+            app:useSimpleSummaryProvider="true" />
+        <EditTextPreference
+            app:key="pref_speed_jog"
+            app:title="慢跑速度 (Jog)"
+            app:summary="預設為 14.4"
+            app:defaultValue="14.4"
+            app:useSimpleSummaryProvider="true" />
+        <EditTextPreference
+            app:key="pref_speed_drive"
+            app:title="行車速度 (Drive)"
+            app:summary="預設為 50.0"
+            app:defaultValue="50.0"
+            app:useSimpleSummaryProvider="true" />
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="暫停時間設定 (秒)">
+        <EditTextPreference
+            app:key="pref_pause_short"
+            app:title="短暫停"
+            app:summary="點選路線時的短暫停時間"
+            app:defaultValue="5"
+            app:useSimpleSummaryProvider="true" />
+        <EditTextPreference
+            app:key="pref_pause_long"
+            app:title="長暫停"
+            app:summary="停留較久的時間"
+            app:defaultValue="30"
+            app:useSimpleSummaryProvider="true" />
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="現實運作模擬">
+        <SwitchPreferenceCompat
+            app:key="pref_drift_enabled"
+            app:title="啟用漂移 (Drift)"
+            app:summary="模擬 GPS 原地跳動感"
+            app:defaultValue="false" />
+        <EditTextPreference
+            app:key="pref_drift_meters"
+            app:title="漂移範圍 (公尺)"
+            app:dependency="pref_drift_enabled"
+            app:defaultValue="5"
+            app:useSimpleSummaryProvider="true" />
+            
+        <SwitchPreferenceCompat
+            app:key="pref_bounce_enabled"
+            app:title="啟用彈跳 (Bounce)"
+            app:summary="模擬行走時的微幅偏移"
+            app:defaultValue="false" />
+        <EditTextPreference
+            app:key="pref_bounce_meters"
+            app:title="彈跳範圍 (公尺)"
+            app:dependency="pref_bounce_enabled"
+            app:defaultValue="2"
+            app:useSimpleSummaryProvider="true" />
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="其他設定">
+        <SwitchPreferenceCompat
+            app:key="pref_loop_enabled"
+            app:title="循環播放"
+            app:summary="路線結束後自動回到起點"
+            app:defaultValue="false" />
+        <SwitchPreferenceCompat
+            app:key="pref_random_speed"
+            app:title="隨機化速度"
+            app:summary="在設定速度範圍內微幅震盪"
+            app:defaultValue="true" />
+    </PreferenceCategory>
+
+</PreferenceScreen>

@@ -15,4 +15,17 @@
     <color name="black">#000000</color>
     <color name="white">#FFFFFF</color>
     <color name="blue_500">#2196F3</color>
+    
+    <!-- Modern UI Colors -->
+    <color name="emerald_500">#10B981</color>
+    <color name="emerald_600">#059669</color>
+    <color name="sky_500">#0EA5E9</color>
+    <color name="sky_600">#0284C7</color>
+    <color name="slate_50">#F8FAFC</color>
+    <color name="slate_100">#F1F5F9</color>
+    <color name="slate_300">#CBD5E1</color>
+    <color name="slate_400">#94A3B8</color>
+    <color name="slate_800">#1E293B</color>
+    <color name="overlay_black_light">#80000000</color>
+    <color name="divider_light">#1F000000</color>
 </resources>

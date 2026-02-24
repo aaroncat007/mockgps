@@ -24,6 +24,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.asLiveData
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.sofawander.app.data.AppDatabase
 import com.sofawander.app.data.FavoriteEntity
@@ -34,6 +35,7 @@ import com.sofawander.app.data.RoutePoint
 import com.sofawander.app.databinding.ActivityMainBinding
 import com.sofawander.app.ui.FavoriteAdapter
 import com.sofawander.app.ui.FavoriteItem
+import com.sofawander.app.ui.FavoriteListDialog
 import com.sofawander.app.ui.GpsEventAdapter
 import com.sofawander.app.ui.GpsEventItem
 import com.sofawander.app.ui.RunHistoryAdapter
@@ -101,20 +103,20 @@ class MainActivity : AppCompatActivity() {
                         else -> null
                     }
                     if (points == null) {
-                        binding.textError.setText(R.string.error_import_unsupported)
+                        Toast.makeText(this@MainActivity, R.string.error_import_unsupported, Toast.LENGTH_SHORT).show()
                         return@use
                     }
                     if (points.isNotEmpty()) {
                         routePoints.clear()
                         routePoints.addAll(points)
                         updateRouteLine()
-                        updatePointCount()
+                        updateRouteStats()
                         showImportSummary(points.size)
                     } else {
-                        binding.textError.setText(R.string.error_import_empty)
+                        Toast.makeText(this@MainActivity, R.string.error_import_empty, Toast.LENGTH_SHORT).show()
                     }
                 } catch (_: Exception) {
-                    binding.textError.setText(R.string.error_import_failed)
+                    Toast.makeText(this@MainActivity, R.string.error_import_failed, Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -123,11 +125,11 @@ class MainActivity : AppCompatActivity() {
         registerForActivityResult(ActivityResultContracts.CreateDocument("application/gpx+xml")) { uri ->
             if (uri == null) return@registerForActivityResult
             if (routePoints.size < 2) {
-                binding.textError.setText(R.string.error_route_export_points)
+                Toast.makeText(this, R.string.error_route_export_points, Toast.LENGTH_SHORT).show()
                 return@registerForActivityResult
             }
             val output = contentResolver.openOutputStream(uri) ?: run {
-                binding.textError.setText(R.string.error_export_failed)
+                Toast.makeText(this, R.string.error_export_failed, Toast.LENGTH_SHORT).show()
                 return@registerForActivityResult
             }
             output.use { stream ->
@@ -135,7 +137,7 @@ class MainActivity : AppCompatActivity() {
                     val name = "SofaWander Route"
                     RouteFileIO.writeGpx(stream, name, routePoints)
                 } catch (_: Exception) {
-                    binding.textError.setText(R.string.error_export_failed)
+                    Toast.makeText(this, R.string.error_export_failed, Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -144,11 +146,11 @@ class MainActivity : AppCompatActivity() {
         registerForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.google-earth.kml+xml")) { uri ->
             if (uri == null) return@registerForActivityResult
             if (routePoints.size < 2) {
-                binding.textError.setText(R.string.error_route_export_points)
+                Toast.makeText(this, R.string.error_route_export_points, Toast.LENGTH_SHORT).show()
                 return@registerForActivityResult
             }
             val output = contentResolver.openOutputStream(uri) ?: run {
-                binding.textError.setText(R.string.error_export_failed)
+                Toast.makeText(this, R.string.error_export_failed, Toast.LENGTH_SHORT).show()
                 return@registerForActivityResult
             }
             output.use { stream ->
@@ -156,7 +158,7 @@ class MainActivity : AppCompatActivity() {
                     val name = "SofaWander Route"
                     RouteFileIO.writeKml(stream, name, routePoints)
                 } catch (_: Exception) {
-                    binding.textError.setText(R.string.error_export_failed)
+                    Toast.makeText(this, R.string.error_export_failed, Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -170,8 +172,9 @@ class MainActivity : AppCompatActivity() {
             val message = intent.getStringExtra(MockLocationService.EXTRA_MESSAGE).orEmpty()
             android.util.Log.d("MockApp", "Status received: $status")
             binding.textStatus.text = status
-            binding.textError.text = message
-
+            if (message.isNotEmpty()) {
+                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            }
             val running = status == getString(R.string.status_running) || status == getString(R.string.status_paused)
             isRouteRunning = running
             binding.buttonStartRoute.text = if (running) "Stop Route" else "Start Route"
@@ -213,45 +216,20 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private val mockRouteReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            val json = intent.getStringExtra(MockLocationService.EXTRA_ROUTE_JSON) ?: return
-            android.util.Log.d("MockApp", "Route received, length: ${json.length}")
-            try {
-                val type = object : com.google.gson.reflect.TypeToken<List<RoutePoint>>() {}.type
-                val points: List<RoutePoint> = Gson().fromJson(json, type)
-                
-                if (points.isNotEmpty()) {
-                    routePoints.clear()
-                    routePoints.addAll(points)
-                    updateRouteLine()
-                    
-                    // 接收到路徑時，強迫顯示統計條 (適用于 Walk Mode)
-                    if (binding.layoutPlaybackStats.visibility != View.VISIBLE) {
-                        binding.layoutPlaybackStats.visibility = View.VISIBLE
-                    }
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("MockApp", "Error parsing walk route", e)
+    private val historyLauncher = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == RESULT_OK) {
+            val id = result.data?.getLongExtra("HISTORY_ID", -1L) ?: -1L
+            if (id != -1L) {
+                loadAndReplayHistory(id)
             }
         }
     }
 
+
+
     private fun formatDistance(meters: Double): String {
         return if (meters >= 1000) "%.2f km".format(meters / 1000.0)
         else "%.0f m".format(meters)
-    }
-
-    private fun formatDuration(ms: Long): String {
-        val totalSec = ms / 1000
-        val min = totalSec / 60
-        val sec = totalSec % 60
-        return if (min >= 60) {
-            val hr = min / 60
-            "%d:%02d:%02d".format(hr, min % 60, sec)
-        } else {
-            "%02d:%02d".format(min, sec)
-        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -262,43 +240,55 @@ class MainActivity : AppCompatActivity() {
 
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
 
+        adapter = RouteAdapter { item ->
+            routePoints.clear()
+            routePoints.addAll(item.points)
+            updateRouteLine()
+            updateRouteStats()
+            selectedRouteId = item.id
+            if (routePoints.isNotEmpty()) {
+                val pt = routePoints.first()
+                mapLibre?.animateCamera(
+                    org.maplibre.android.camera.CameraUpdateFactory.newLatLngZoom(
+                        org.maplibre.android.geometry.LatLng(pt.latitude, pt.longitude),
+                        15.0
+                    )
+                )
+            }
+        }
+        favoriteAdapter = FavoriteAdapter(
+            onClick = { item -> showFavoriteEditDialog(item) },
+            onDelete = { item ->
+                lifecycleScope.launch {
+                    AppDatabase.getInstance(this@MainActivity).favoriteDao().deleteById(item.id)
+                }
+            }
+        )
+        historyAdapter = RunHistoryAdapter { item -> showRunDetails(item) }
+
         mapView = binding.mapView
         mapView.onCreate(savedInstanceState)
         setupMap()
-        updatePointCount()
-
-        adapter = RouteAdapter { item ->
-            loadRoute(item)
-        }
-        binding.recyclerRoutes.layoutManager = LinearLayoutManager(this)
-        binding.recyclerRoutes.adapter = adapter
-
-        // favorites are now handled inside a custom dialog when opened
-
-        historyAdapter = RunHistoryAdapter { item ->
-            showRunDetails(item)
-        }
-        binding.recyclerHistory.layoutManager = LinearLayoutManager(this)
-        binding.recyclerHistory.adapter = historyAdapter
+        updateRouteStats()
 
         observeRoutes()
         observeFavorites()
         observeHistory()
         bindActions()
-        setupInputFilters()
-        setupTooltips()
-        initM4Defaults()
         setupJoystick()
 
         // 註冊 MockLocationService 狀態接收器
         val statusFilter = android.content.IntentFilter(MockLocationService.ACTION_MOCK_STATUS)
         val progressFilter = android.content.IntentFilter(MockLocationService.ACTION_MOCK_PROGRESS)
+        val routeFilter = android.content.IntentFilter(MockLocationService.ACTION_ROUTE_UPDATED)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(mockStatusReceiver, statusFilter, Context.RECEIVER_NOT_EXPORTED)
             registerReceiver(mockProgressReceiver, progressFilter, Context.RECEIVER_NOT_EXPORTED)
+            registerReceiver(mockRouteReceiver, routeFilter, Context.RECEIVER_NOT_EXPORTED)
         } else {
             registerReceiver(mockStatusReceiver, statusFilter)
             registerReceiver(mockProgressReceiver, progressFilter)
+            registerReceiver(mockRouteReceiver, routeFilter)
         }
 
         // Android 13+ 通知權限動態請求
@@ -310,94 +300,61 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun bindActions() {
-        binding.buttonDevOptions.setOnClickListener {
-            val intent = Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
-            startActivity(intent)
+        binding.btnLocation.setOnClickListener {
+            centerToCurrentLocation()
         }
 
-        binding.buttonLocationSettings.setOnClickListener {
-            val intent = Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
-            startActivity(intent)
-        }
-
-        binding.buttonStart.setOnClickListener {
-            ensurePermissionsAndStart()
-        }
-
-        binding.buttonPause.setOnClickListener {
-            pauseRoutePlayback()
-        }
-
-        binding.buttonStop.setOnClickListener {
-            stopRoutePlayback()
-        }
-
-        binding.spinnerSpeedMode.setOnItemSelectedListener(
-            object : android.widget.AdapterView.OnItemSelectedListener {
-                override fun onItemSelected(
-                    parent: android.widget.AdapterView<*>?,
-                    view: android.view.View?,
-                    position: Int,
-                    id: Long
-                ) {
-                    applySpeedDefaultsIfEmpty(position)
-                }
-
-                override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
-            }
-        )
-
-        binding.buttonPresetWalk.setOnClickListener {
-            applySpeedPreset(0)
-            binding.spinnerSpeedMode.setSelection(0)
-        }
-
-        binding.buttonPresetJog.setOnClickListener {
-            applySpeedPreset(1)
-            binding.spinnerSpeedMode.setSelection(1)
-        }
-
-        binding.buttonPresetDrive.setOnClickListener {
-            applySpeedPreset(2)
-            binding.spinnerSpeedMode.setSelection(2)
-        }
-
-        binding.buttonPresetPauseNone.setOnClickListener {
-            applyPausePreset(0)
-        }
-
-        binding.buttonPresetPauseShort.setOnClickListener {
-            applyPausePreset(1)
-        }
-
-        binding.buttonPresetPauseLong.setOnClickListener {
-            applyPausePreset(2)
-        }
-
-        binding.buttonClearPause.setOnClickListener {
-            binding.editPauseMin.text?.clear()
-            binding.editPauseMax.text?.clear()
-        }
-
-        binding.checkDrift.setOnCheckedChangeListener { _, isChecked ->
-            binding.editDriftMeters.isEnabled = isChecked
-        }
-
-        binding.checkBounce.setOnCheckedChangeListener { _, isChecked ->
-            binding.editBounceMeters.isEnabled = isChecked
-        }
-
-        binding.checkSmoothing.setOnCheckedChangeListener { _, isChecked ->
-            binding.editSmoothingAlpha.isEnabled = isChecked
-        }
-
-        binding.checkRoundTrip.setOnCheckedChangeListener { _, isChecked ->
-            if (isChecked) {
-                binding.checkLoop.isChecked = false
+        binding.btnTeleport.setOnClickListener {
+            val point = mapLibre?.cameraPosition?.target
+            if (point != null) {
+                showTeleportDialog(point)
             }
         }
 
-        attachRangeWatchers()
+        binding.btnSearch.setOnClickListener {
+            performSearch()
+        }
+
+        binding.editSearch.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_SEARCH) {
+                performSearch()
+                true
+            } else false
+        }
+
+        binding.btnFavorites.setOnClickListener {
+            showFavoritesDialog()
+        }
+
+        binding.btnWalkMenu.setOnClickListener {
+            val visible = binding.layoutWalkControls.visibility == View.VISIBLE
+            binding.layoutWalkControls.visibility = if (visible) View.GONE else View.VISIBLE
+        }
+
+        binding.btnWalkSpeed.setOnClickListener {
+            applySpeedPreset(5.0)
+            binding.layoutWalkControls.visibility = View.GONE
+        }
+        binding.btnJogSpeed.setOnClickListener {
+            applySpeedPreset(9.0)
+            binding.layoutWalkControls.visibility = View.GONE
+        }
+        binding.btnRunSpeed.setOnClickListener {
+            applySpeedPreset(15.0)
+            binding.layoutWalkControls.visibility = View.GONE
+        }
+
+        binding.buttonStartRoute.setOnClickListener {
+            if (isRouteRunning) {
+                stopRoutePlayback()
+            } else {
+                ensurePermissionsAndStart()
+            }
+        }
+
+        binding.buttonLoadRoute.setOnClickListener {
+            openDocumentLauncher.launch(arrayOf("application/gpx+xml", "application/vnd.google-earth.kml+xml", "application/octet-stream", "text/xml", "*/*"))
+        }
 
         binding.buttonSaveRoute.setOnClickListener {
             saveRoute()
@@ -407,14 +364,14 @@ class MainActivity : AppCompatActivity() {
             routePoints.clear()
             selectedRouteId = null
             updateRouteLine()
-            updatePointCount()
+            updateRouteStats()
         }
 
         binding.buttonUndoPoint.setOnClickListener {
             if (routePoints.isNotEmpty()) {
                 routePoints.removeAt(routePoints.lastIndex)
                 updateRouteLine()
-                updatePointCount()
+                updateRouteStats()
             }
         }
 
@@ -429,10 +386,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        binding.buttonLoadRoute.setOnClickListener {
-            showLoadRouteDialog()
-        }
-
         binding.btnRouteEditorClose.setOnClickListener {
             binding.layoutRouteEditor.visibility = android.view.View.GONE
         }
@@ -442,12 +395,36 @@ class MainActivity : AppCompatActivity() {
             binding.layoutRouteEditor.visibility = if (visible) android.view.View.GONE else android.view.View.VISIBLE
         }
 
-        binding.btnFavorites.setOnClickListener {
+        binding.btnSettings.setOnClickListener {
+            binding.drawerLayout.open()
+        }
+
+        binding.menuHome.setOnClickListener {
+            binding.drawerLayout.close()
+        }
+
+        binding.menuSettings.setOnClickListener {
+            binding.drawerLayout.close()
+            startActivity(Intent(this, com.sofawander.app.ui.SettingsActivity::class.java))
+        }
+
+        binding.menuHistory.setOnClickListener {
+            binding.drawerLayout.close()
+            historyLauncher.launch(Intent(this, com.sofawander.app.ui.HistoryActivity::class.java))
+        }
+
+        binding.menuFavorites.setOnClickListener {
+            binding.drawerLayout.close()
             showFavoritesDialog()
         }
 
-        binding.btnSettings.setOnClickListener {
-            binding.drawerLayout.open()
+        binding.menuDevOptions.setOnClickListener {
+            binding.drawerLayout.close()
+            try {
+                startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))
+            } catch (e: Exception) {
+                Toast.makeText(this, "無法開啟開發人員選項", Toast.LENGTH_SHORT).show()
+            }
         }
 
         binding.btnWalkMenu.setOnClickListener {
@@ -488,7 +465,7 @@ class MainActivity : AppCompatActivity() {
                     routePoints.add(RoutePoint(point.latitude, point.longitude))
                     lastTappedPoint = RoutePoint(point.latitude, point.longitude)
                     updateRouteLine()
-                    updatePointCount()
+                    updateRouteStats()
                 } else {
                     // 非編輯模式下，點擊地圖即彈出跳轉
                     updateSelectedPointSource(point)
@@ -585,7 +562,7 @@ class MainActivity : AppCompatActivity() {
         val points = routePoints.map { Point.fromLngLat(it.longitude, it.latitude) }
 
         if (routePoints.size < 2) {
-            source.setGeoJson(org.maplibre.geojson.FeatureCollection.fromFeatures(arrayOf()))
+            source.setGeoJson(org.maplibre.geojson.FeatureCollection.fromFeatures(emptyList()))
         } else {
             source.setGeoJson(LineString.fromLngLats(points))
         }
@@ -713,232 +690,10 @@ class MainActivity : AppCompatActivity() {
         return bitmap
     }
 
-    private fun loadRoute(item: RouteItem) {
-        selectedRouteId = item.id
-        routePoints.clear()
-        routePoints.addAll(item.points)
-        updateRouteLine()
-        updatePointCount()
-        
-        item.points.firstOrNull()?.let { point ->
-            mapLibre?.animateCamera(
-                CameraUpdateFactory.newLatLngZoom(
-                    org.maplibre.android.geometry.LatLng(point.latitude, point.longitude),
-                    15.0
-                )
-            )
-        }
-    }
 
-    private var currentRoutes = emptyList<RouteItem>()
 
-    private fun observeRoutes() {
-        val db = AppDatabase.getInstance(this)
-        lifecycleScope.launch {
-            db.routeDao().getAllRoutes().collectLatest { routes ->
-                currentRoutes = routes.map { entity ->
-                    RouteItem(
-                        id = entity.id,
-                        name = entity.name,
-                        points = RouteJson.fromJson(entity.pointsJson),
-                        createdAt = entity.createdAt
-                    )
-                }
-                adapter.submitList(currentRoutes)
-            }
-        }
-    }
 
-    private fun showLoadRouteDialog() {
-        val view = layoutInflater.inflate(R.layout.dialog_favorites, null) // 借用 favorites 的 dialog 佈局或以同樣結構撰寫
-        val recycler = view.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.recyclerDialogFavorites)
-        val btnCancel = view.findViewById<android.widget.Button>(R.id.btnCancelFavorites)
 
-        val dialog = android.app.AlertDialog.Builder(this)
-            .setTitle("Load Route")
-            .setView(view)
-            .setCancelable(true)
-            .create()
-
-        val routeAdapter = RouteAdapter(
-            onClick = { item ->
-                loadRoute(item)
-                dialog.dismiss()
-            }
-        )
-        
-        recycler.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this)
-        recycler.adapter = routeAdapter
-        routeAdapter.submitList(currentRoutes)
-
-        btnCancel.setOnClickListener { dialog.dismiss() }
-        dialog.show()
-    }
-
-    private var currentFavorites = emptyList<FavoriteItem>()
-
-    private fun observeFavorites() {
-        val db = AppDatabase.getInstance(this)
-        lifecycleScope.launch {
-            db.favoriteDao().getAllFavorites().collectLatest { favorites ->
-                currentFavorites = favorites.map { entity ->
-                    FavoriteItem(
-                        id = entity.id,
-                        name = entity.name,
-                        lat = entity.lat,
-                        lng = entity.lng,
-                        note = entity.note
-                    )
-                }
-            }
-        }
-    }
-
-    private fun showFavoritesDialog() {
-        val view = layoutInflater.inflate(R.layout.dialog_favorites, null)
-        val recycler = view.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.recyclerDialogFavorites)
-        val btnCancel = view.findViewById<android.widget.Button>(R.id.btnCancelFavorites)
-
-        val dialog = android.app.AlertDialog.Builder(this)
-            .setView(view)
-            .setCancelable(true)
-            .create()
-
-        val adapter = FavoriteAdapter(
-            onClick = { item ->
-                selectedFavoriteId = item.id
-                lastTappedPoint = RoutePoint(item.lat, item.lng)
-                mapLibre?.animateCamera(
-                    CameraUpdateFactory.newLatLngZoom(
-                        org.maplibre.android.geometry.LatLng(item.lat, item.lng),
-                        15.5
-                    )
-                )
-                dialog.dismiss()
-            },
-            onDelete = { item ->
-                val db = AppDatabase.getInstance(this)
-                lifecycleScope.launch {
-                    db.favoriteDao().deleteById(item.id)
-                }
-            }
-        )
-        
-        recycler.layoutManager = LinearLayoutManager(this)
-        recycler.adapter = adapter
-        adapter.submitList(currentFavorites)
-
-        btnCancel.setOnClickListener { dialog.dismiss() }
-        dialog.show()
-    }
-
-    private fun observeHistory() {
-        val db = AppDatabase.getInstance(this)
-        lifecycleScope.launch {
-            db.runHistoryDao().getAllRuns().collectLatest { runs ->
-                val items = runs.map { run ->
-                    RunHistoryItem(
-                        id = run.id,
-                        routeName = run.routeName,
-                        pointCount = run.pointCount,
-                        speedMode = run.speedMode,
-                        loopEnabled = run.loopEnabled,
-                        roundTripEnabled = run.roundTripEnabled,
-                        startedAt = run.startedAt,
-                        endedAt = run.endedAt,
-                        status = run.status
-                    )
-                }
-                historyAdapter.submitList(items)
-            }
-        }
-    }
-
-    private fun showRunDetails(item: RunHistoryItem) {
-        val db = AppDatabase.getInstance(this)
-        lifecycleScope.launch {
-            val events = db.gpsEventDao().getEventsForRun(item.id).first()
-            val eventItems = events.map {
-                GpsEventItem(
-                    timestamp = it.timestamp,
-                    lat = it.lat,
-                    lng = it.lng,
-                    accuracy = it.accuracy,
-                    speedMps = it.speedMps
-                )
-            }
-            renderRunDialog(item, eventItems)
-        }
-    }
-
-    private fun showImportSummary(pointCount: Int) {
-        android.app.AlertDialog.Builder(this)
-            .setTitle(getString(R.string.title_import_success))
-            .setMessage(getString(R.string.message_import_points, pointCount))
-            .setPositiveButton(getString(R.string.button_save_as_route)) { _, _ ->
-                saveRoute()
-            }
-            .setNeutralButton(getString(R.string.button_keep_temp), null)
-            .setNegativeButton(getString(R.string.button_cancel), null)
-            .show()
-    }
-
-    private fun renderRunDialog(item: RunHistoryItem, events: List<GpsEventItem>) {
-        val count = events.size
-        val duration = if (item.endedAt != null) {
-            ((item.endedAt - item.startedAt) / 1000).coerceAtLeast(0)
-        } else null
-        val latest = events.lastOrNull()
-        val summary = StringBuilder().apply {
-            append("Points: ${item.pointCount}\n")
-            append("Events: $count\n")
-            if (duration != null) append("Duration: ${duration}s\n")
-            append("Status: ${item.status}\n")
-            if (latest != null) {
-                append("Last: ${latest.lat}, ${latest.lng}\n")
-                append("Speed: ${"%.2f".format(latest.speedMps)} m/s\n")
-            }
-        }.toString()
-
-        val view = layoutInflater.inflate(R.layout.dialog_run_details, null)
-        val summaryView = view.findViewById<android.widget.TextView>(R.id.textRunSummary)
-        val copyButton = view.findViewById<android.widget.Button>(R.id.buttonCopyCsv)
-        val replayButton = view.findViewById<android.widget.Button>(R.id.buttonReplayRun)
-        val recycler = view.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.recyclerEvents)
-
-        summaryView.text = summary
-        val eventAdapter = GpsEventAdapter()
-        recycler.layoutManager = LinearLayoutManager(this)
-        recycler.adapter = eventAdapter
-        eventAdapter.submitList(events)
-
-        copyButton.setOnClickListener {
-            val csv = buildCsv(events)
-            val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-            val clip = android.content.ClipData.newPlainText("gps_events", csv)
-            clipboard.setPrimaryClip(clip)
-            Toast.makeText(this, getString(R.string.message_copied), Toast.LENGTH_SHORT).show()
-        }
-
-        replayButton.setOnClickListener {
-            if (events.isEmpty()) return@setOnClickListener
-            routePoints.clear()
-            events.forEach { event ->
-                routePoints.add(RoutePoint(event.lat, event.lng))
-            }
-            updateRouteLine()
-            updatePointCount()
-            binding.textError.text = ""
-            binding.spinnerSpeedMode.setSelection(item.speedMode.coerceIn(0, 2))
-            startRoutePlayback()
-        }
-
-        android.app.AlertDialog.Builder(this)
-            .setTitle(getString(R.string.title_run_details))
-            .setView(view)
-            .setPositiveButton("OK", null)
-            .show()
-    }
 
     private fun buildCsv(events: List<GpsEventItem>): String {
         val sb = StringBuilder()
@@ -1059,6 +814,15 @@ class MainActivity : AppCompatActivity() {
                         startService(intent)
                     }
 
+                    // 將跳轉的軌跡加入 routePoints 以繪製路徑
+                    if (currentMockLat != 0.0) {
+                        routePoints.clear()
+                        routePoints.add(RoutePoint(currentMockLat, currentMockLng))
+                        routePoints.add(RoutePoint(lat, lng))
+                        updateRouteLine()
+                        updateRouteStats()
+                    }
+
                     mapLibre?.animateCamera(
                         CameraUpdateFactory.newLatLngZoom(
                             org.maplibre.android.geometry.LatLng(lat, lng),
@@ -1157,35 +921,44 @@ class MainActivity : AppCompatActivity() {
 
     private fun renameSelectedRoute() {
         val id = selectedRouteId ?: run {
-            binding.textError.setText(R.string.error_route_select)
+            Toast.makeText(this, R.string.error_route_select, Toast.LENGTH_SHORT).show()
             return
         }
-        binding.textError.text = ""
     }
 
     private fun addFavorite() {
-        val name = binding.editFavoriteName.text.toString().trim()
-        if (name.isEmpty()) {
-            binding.textError.setText(R.string.error_favorite_name)
-            return
-        }
         val point = lastTappedPoint ?: run {
-            binding.textError.setText(R.string.error_favorite_point)
+            Toast.makeText(this, R.string.error_favorite_point, Toast.LENGTH_SHORT).show()
             return
         }
-        val entity = FavoriteEntity(
-            name = name,
-            lat = point.latitude,
-            lng = point.longitude,
-            note = null,
-            createdAt = System.currentTimeMillis()
-        )
-        val db = AppDatabase.getInstance(this)
-        lifecycleScope.launch {
-            db.favoriteDao().insert(entity)
-        }
-        binding.editFavoriteName.text?.clear()
-        binding.textError.text = ""
+
+        val input = android.widget.EditText(this)
+        input.hint = getString(R.string.hint_favorite_name)
+
+        android.app.AlertDialog.Builder(this)
+            .setTitle(R.string.button_add_favorite)
+            .setView(input)
+            .setPositiveButton(R.string.button_save) { _, _ ->
+                val name = input.text.toString().trim()
+                if (name.isEmpty()) {
+                    Toast.makeText(this, R.string.error_favorite_name, Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                val entity = FavoriteEntity(
+                    name = name,
+                    lat = point.latitude,
+                    lng = point.longitude,
+                    note = null,
+                    createdAt = System.currentTimeMillis()
+                )
+                val db = AppDatabase.getInstance(this)
+                lifecycleScope.launch {
+                    db.favoriteDao().insert(entity)
+                    Toast.makeText(this@MainActivity, "Favorite Added", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton(R.string.button_cancel, null)
+            .show()
     }
 
     private fun showFavoriteEditDialog(item: FavoriteItem) {
@@ -1205,7 +978,7 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton(getString(R.string.button_save)) { _, _ ->
                 val newName = nameField.text.toString().trim()
                 if (newName.isEmpty()) {
-                    binding.textError.setText(R.string.error_favorite_name)
+                    Toast.makeText(this, R.string.error_favorite_name, Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
                 }
                 val newNote = noteField.text.toString().trim().ifEmpty { null }
@@ -1225,7 +998,7 @@ class MainActivity : AppCompatActivity() {
         routePoints.clear()
         routePoints.add(RoutePoint(item.lat, item.lng))
         updateRouteLine()
-        updatePointCount()
+        updateRouteStats()
         selectedRouteId = null
         mapLibre?.animateCamera(
             CameraUpdateFactory.newLatLngZoom(
@@ -1238,7 +1011,7 @@ class MainActivity : AppCompatActivity() {
     private fun addFavoriteToRoute(item: FavoriteItem) {
         routePoints.add(RoutePoint(item.lat, item.lng))
         updateRouteLine()
-        updatePointCount()
+        updateRouteStats()
         mapLibre?.animateCamera(
             CameraUpdateFactory.newLatLngZoom(
                 org.maplibre.android.geometry.LatLng(item.lat, item.lng),
@@ -1263,7 +1036,7 @@ class MainActivity : AppCompatActivity() {
         if (nearestIndex >= 0 && nearestDistance <= thresholdMeters) {
             routePoints.removeAt(nearestIndex)
             updateRouteLine()
-            updatePointCount()
+            updateRouteStats()
         }
     }
 
@@ -1293,7 +1066,7 @@ class MainActivity : AppCompatActivity() {
         isDraggingPoint = false
         draggingIndex = -1
         mapLibre?.uiSettings?.setAllGesturesEnabled(true)
-        updatePointCount()
+        updateRouteStats()
     }
 
     private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
@@ -1305,11 +1078,6 @@ class MainActivity : AppCompatActivity() {
             Math.sin(dLon / 2) * Math.sin(dLon / 2)
         val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
         return r * c
-    }
-
-    private fun updatePointCount() {
-        binding.textPointCount.text = getString(R.string.label_point_count, routePoints.size)
-        updateRouteStats()
     }
 
     private fun updateRouteStats() {
@@ -1324,75 +1092,15 @@ class MainActivity : AppCompatActivity() {
                 routePoints[i + 1].latitude, routePoints[i + 1].longitude
             )
         }
-        val speedMode = binding.spinnerSpeedMode.selectedItemPosition
-        val speedMps = when (speedMode) {
-            1 -> 2.8   // Jog
-            2 -> 13.9  // Drive
-            else -> 1.4 // Walk
-        }
-        val speedKmh = speedMps * 3.6
+        
+        val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+        val speedWalk = prefs.getString("pref_speed_walk", "9.0")?.toDoubleOrNull() ?: 9.0
+        val speedMps = speedWalk / 3.6
+        
         val estSeconds = totalDist / speedMps
         val distStr = if (totalDist >= 1000) "%.2f km".format(totalDist / 1000.0) else "%.0f m".format(totalDist)
         val timeStr = formatDuration((estSeconds * 1000).toLong())
-        binding.textRouteStats.text = "📍 ${routePoints.size} 點 | 📏 $distStr | ⏱ ~$timeStr | %.1f km/h".format(speedKmh)
-    }
-
-    private fun ensurePermissionsAndStart() {
-        val hasPermission = ContextCompat.checkSelfPermission(
-            this,
-            Manifest.permission.ACCESS_FINE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
-
-        if (!hasPermission) {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
-                REQUEST_LOCATION_PERMISSION
-            )
-            return
-        }
-
-        if (needsNotificationPermission()) {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
-                REQUEST_NOTIFICATION_PERMISSION
-            )
-            return
-        }
-
-        if (!isMockLocationEnabled()) {
-            showMockLocationSetupDialog()
-            return
-        }
-
-        startRoutePlayback()
-    }
-
-    @Suppress("DEPRECATION")
-    private fun isMockLocationEnabled(): Boolean {
-        val appOps = getSystemService(Context.APP_OPS_SERVICE) as? android.app.AppOpsManager ?: return false
-        return try {
-            val mode = appOps.checkOpNoThrow(
-                android.app.AppOpsManager.OPSTR_MOCK_LOCATION,
-                android.os.Process.myUid(),
-                packageName
-            )
-            mode == android.app.AppOpsManager.MODE_ALLOWED
-        } catch (e: Exception) {
-            false
-        }
-    }
-
-    private fun showMockLocationSetupDialog() {
-        android.app.AlertDialog.Builder(this)
-            .setTitle("需要設定模擬定位")
-            .setMessage("請先到「開發人員選項」中，將本 APP 設定為「模擬定位應用程式」。\n\n路徑：設定 → 開發人員選項 → 選取模擬位置應用程式 → 選擇 SofaWander")
-            .setPositiveButton("前往設定") { _, _ ->
-                startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))
-            }
-            .setNegativeButton("取消", null)
-            .show()
+        binding.textRouteStats.text = "📍 ${routePoints.size} 點 | 📏 $distStr | ⏱ ~$timeStr | %.1f km/h".format(speedWalk)
     }
 
     private fun startRoutePlayback() {
@@ -1400,245 +1108,52 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, R.string.error_route_points, Toast.LENGTH_SHORT).show()
             return
         }
-        val speedMode = binding.spinnerSpeedMode.selectedItemPosition
-        val speedMinText = binding.editSpeedMin.text.toString().trim()
-        val speedMaxText = binding.editSpeedMax.text.toString().trim()
-        val pauseMinText = binding.editPauseMin.text.toString().trim()
-        val pauseMaxText = binding.editPauseMax.text.toString().trim()
-        val randomSpeed = binding.checkRandomSpeed.isChecked
-        val loopEnabled = binding.checkLoop.isChecked
-        val roundTripEnabled = binding.checkRoundTrip.isChecked
-        val driftEnabled = binding.checkDrift.isChecked
-        val bounceEnabled = binding.checkBounce.isChecked
-        val smoothingEnabled = binding.checkSmoothing.isChecked
 
-        val driftMeters = binding.editDriftMeters.text.toString().toDoubleOrNull() ?: 0.0
-        val bounceMeters = binding.editBounceMeters.text.toString().toDoubleOrNull() ?: 0.0
-        val smoothingAlpha = binding.editSmoothingAlpha.text.toString().toDoubleOrNull() ?: 0.0
+        val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+        
+        val speedWalk = prefs.getString("pref_speed_walk", "9.0")?.toDoubleOrNull() ?: 9.0
+        val pauseShort = prefs.getString("pref_pause_short", "5")?.toDoubleOrNull() ?: 5.0
+        
+        val randomSpeed = prefs.getBoolean("pref_random_speed", true)
+        val loopEnabled = prefs.getBoolean("pref_loop_enabled", false)
+        val driftEnabled = prefs.getBoolean("pref_drift_enabled", false)
+        val bounceEnabled = prefs.getBoolean("pref_bounce_enabled", false)
+        val driftMeters = prefs.getString("pref_drift_meters", "5")?.toDoubleOrNull() ?: 5.0
+        val bounceMeters = prefs.getString("pref_bounce_meters", "2")?.toDoubleOrNull() ?: 2.0
 
-        if (!validateRanges(showError = true)) {
-            Toast.makeText(this, "Speed/Pause range invalid", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        if (driftEnabled && !isInRange(driftMeters, 0.0, MAX_DRIFT_METERS)) {
-            binding.textStatus.setText(R.string.status_error)
-            binding.textError.setText(R.string.error_drift_range)
-            binding.editDriftMeters.error = getString(R.string.error_drift_range)
-            return
-        }
-        if (bounceEnabled && !isInRange(bounceMeters, 0.0, MAX_BOUNCE_METERS)) {
-            binding.textStatus.setText(R.string.status_error)
-            binding.textError.setText(R.string.error_bounce_range)
-            binding.editBounceMeters.error = getString(R.string.error_bounce_range)
-            return
-        }
-        if (smoothingEnabled && !isInRange(smoothingAlpha, 0.0, MAX_SMOOTHING_ALPHA)) {
-            binding.textStatus.setText(R.string.status_error)
-            binding.textError.setText(R.string.error_smoothing_range)
-            binding.editSmoothingAlpha.error = getString(R.string.error_smoothing_range)
-            return
-        }
-
-        val speedRange = normalizeRange(speedMinText, speedMaxText, MAX_SPEED_KMH)
-        if (speedRange == null) {
-            Toast.makeText(this, R.string.error_speed_range, Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val pauseRange = normalizeRange(pauseMinText, pauseMaxText, MAX_PAUSE_SEC)
-        if (pauseRange == null) {
-            Toast.makeText(this, R.string.error_pause_range, Toast.LENGTH_SHORT).show()
-            return
-        }
         val intent = Intent(this, MockLocationService::class.java).apply {
             action = MockLocationService.ACTION_START_ROUTE
             putExtra(MockLocationService.EXTRA_ROUTE_JSON, RouteJson.toJson(routePoints))
-            putExtra(MockLocationService.EXTRA_SPEED_MODE, speedMode)
-            putExtra(MockLocationService.EXTRA_SPEED_MIN_KMH, speedRange.first)
-            putExtra(MockLocationService.EXTRA_SPEED_MAX_KMH, speedRange.second)
-            putExtra(MockLocationService.EXTRA_PAUSE_MIN_SEC, pauseRange.first)
-            putExtra(MockLocationService.EXTRA_PAUSE_MAX_SEC, pauseRange.second)
+            
+            putExtra(MockLocationService.EXTRA_SPEED_MIN_KMH, speedWalk * 0.9)
+            putExtra(MockLocationService.EXTRA_SPEED_MAX_KMH, speedWalk * 1.1)
+            putExtra(MockLocationService.EXTRA_PAUSE_MIN_SEC, pauseShort)
+            putExtra(MockLocationService.EXTRA_PAUSE_MAX_SEC, pauseShort * 1.5)
+            
             putExtra(MockLocationService.EXTRA_RANDOM_SPEED, randomSpeed)
             putExtra(MockLocationService.EXTRA_LOOP_ENABLED, loopEnabled)
-            putExtra(MockLocationService.EXTRA_ROUNDTRIP_ENABLED, roundTripEnabled)
             putExtra(MockLocationService.EXTRA_DRIFT_ENABLED, driftEnabled)
             putExtra(MockLocationService.EXTRA_BOUNCE_ENABLED, bounceEnabled)
-            putExtra(MockLocationService.EXTRA_SMOOTHING_ENABLED, smoothingEnabled)
             putExtra(MockLocationService.EXTRA_DRIFT_METERS, driftMeters)
             putExtra(MockLocationService.EXTRA_BOUNCE_METERS, bounceMeters)
-            putExtra(MockLocationService.EXTRA_SMOOTHING_ALPHA, smoothingAlpha)
         }
         ContextCompat.startForegroundService(this, intent)
+        isRouteRunning = true
+        binding.buttonStartRoute.text = "Stop Route"
+        binding.layoutPlaybackStats.visibility = View.VISIBLE
         binding.textStatus.setText(R.string.status_running)
-        binding.textError.text = ""
     }
 
-    private fun normalizeRange(minText: String, maxText: String, maxAllowed: Double? = null): Pair<Double, Double>? {
-        if (minText.isEmpty() && maxText.isEmpty()) return 0.0 to 0.0
-        val min = if (minText.isEmpty()) null else minText.toDoubleOrNull()
-        val max = if (maxText.isEmpty()) null else maxText.toDoubleOrNull()
-        if (min == null && max == null) return null
-        val safeMin = min ?: max ?: return null
-        val safeMax = max ?: min ?: return null
-        if (safeMin < 0.0 || safeMax < 0.0) return null
-        if (safeMax < safeMin) return null
-        if (maxAllowed != null && (safeMin > maxAllowed || safeMax > maxAllowed)) return null
-        return safeMin to safeMax
-    }
-
-    private fun applySpeedDefaultsIfEmpty(mode: Int) {
-        val minText = binding.editSpeedMin.text.toString().trim()
-        val maxText = binding.editSpeedMax.text.toString().trim()
-        if (minText.isNotEmpty() || maxText.isNotEmpty()) return
-        val (min, max) = when (mode) {
-            1 -> 6.0 to 10.0   // Jog
-            2 -> 30.0 to 60.0  // Drive
-            else -> 3.0 to 5.0 // Walk
-        }
-        binding.editSpeedMin.setText(min.toString())
-        binding.editSpeedMax.setText(max.toString())
-    }
-
-    private fun applySpeedPreset(mode: Int) {
-        val (min, max) = when (mode) {
-            1 -> 6.0 to 10.0   // Jog
-            2 -> 30.0 to 60.0  // Drive
-            else -> 3.0 to 5.0 // Walk
-        }
-        binding.editSpeedMin.setText(min.toString())
-        binding.editSpeedMax.setText(max.toString())
-    }
-
-    private fun applyPausePreset(mode: Int) {
-        val (min, max) = when (mode) {
-            1 -> 2.0 to 5.0   // Short
-            2 -> 8.0 to 15.0  // Long
-            else -> 0.0 to 0.0 // No pause
-        }
-        binding.editPauseMin.setText(min.toString())
-        binding.editPauseMax.setText(max.toString())
-    }
-
-    private fun setupInputFilters() {
-        val filter = DecimalInputFilter()
-        binding.editSpeedMin.filters = arrayOf(filter)
-        binding.editSpeedMax.filters = arrayOf(filter)
-        binding.editPauseMin.filters = arrayOf(filter)
-        binding.editPauseMax.filters = arrayOf(filter)
-        binding.editDriftMeters.filters = arrayOf(filter)
-        binding.editBounceMeters.filters = arrayOf(filter)
-        binding.editSmoothingAlpha.filters = arrayOf(filter)
-    }
-
-    private fun setupTooltips() {
-        ViewCompat.setTooltipText(binding.iconSpeedInfo, getString(R.string.tooltip_speed_range))
-        ViewCompat.setTooltipText(binding.iconPauseInfo, getString(R.string.tooltip_pause_range))
-    }
-
-    private fun initM4Defaults() {
-        binding.checkDrift.isChecked = false
-        binding.checkBounce.isChecked = false
-        binding.checkSmoothing.isChecked = false
-        binding.editDriftMeters.isEnabled = false
-        binding.editBounceMeters.isEnabled = false
-        binding.editSmoothingAlpha.isEnabled = false
-        binding.editDriftMeters.setText("3")
-        binding.editBounceMeters.setText("5")
-        binding.editSmoothingAlpha.setText("0.3")
-    }
-
-    private fun attachRangeWatchers() {
-        val watcher = SimpleTextWatcher {
-            validateRanges(showError = false)
-        }
-        binding.editSpeedMin.addTextChangedListener(watcher)
-        binding.editSpeedMax.addTextChangedListener(watcher)
-        binding.editPauseMin.addTextChangedListener(watcher)
-        binding.editPauseMax.addTextChangedListener(watcher)
-    }
-
-    private fun validateRanges(showError: Boolean): Boolean {
-        val speedRange = normalizeRange(
-            binding.editSpeedMin.text.toString().trim(),
-            binding.editSpeedMax.text.toString().trim(),
-            MAX_SPEED_KMH
-        )
-        if (speedRange == null) {
-            if (showError) {
-                binding.textStatus.setText(R.string.status_error)
-                binding.textError.setText(R.string.error_speed_range)
-                setRangeError(binding.editSpeedMin, binding.editSpeedMax, true, R.string.error_speed_range)
-            }
-            return false
-        } else {
-            setRangeError(binding.editSpeedMin, binding.editSpeedMax, false, R.string.error_speed_range)
-        }
-
-        val pauseRange = normalizeRange(
-            binding.editPauseMin.text.toString().trim(),
-            binding.editPauseMax.text.toString().trim(),
-            MAX_PAUSE_SEC
-        )
-        if (pauseRange == null) {
-            if (showError) {
-                binding.textStatus.setText(R.string.status_error)
-                binding.textError.setText(R.string.error_pause_range)
-                setRangeError(binding.editPauseMin, binding.editPauseMax, true, R.string.error_pause_range)
-            }
-            return false
-        } else {
-            setRangeError(binding.editPauseMin, binding.editPauseMax, false, R.string.error_pause_range)
-        }
-
-        if (!showError) {
-            binding.textError.text = ""
-        }
-        return true
+    private fun formatDuration(millis: Long): String {
+        val seconds = (millis / 1000) % 60
+        val minutes = (millis / (1000 * 60)) % 60
+        val hours = (millis / (1000 * 60 * 60))
+        return if (hours > 0) "%d:%02d:%02d".format(hours, minutes, seconds)
+        else "%02d:%02d".format(minutes, seconds)
     }
 
     private fun isInRange(value: Double, min: Double, max: Double): Boolean {
         return value >= min && value <= max
-    }
-
-    private fun setRangeError(
-        minField: EditText,
-        maxField: EditText,
-        hasError: Boolean,
-        messageRes: Int
-    ) {
-        if (hasError) {
-            val message = getString(messageRes)
-            minField.error = message
-            maxField.error = message
-        } else {
-            minField.error = null
-            maxField.error = null
-        }
-    }
-
-    private class DecimalInputFilter : InputFilter {
-        private val pattern = Regex("^\\d*(\\.\\d{0,2})?$")
-
-        override fun filter(
-            source: CharSequence,
-            start: Int,
-            end: Int,
-            dest: Spanned,
-            dstart: Int,
-            dend: Int
-        ): CharSequence? {
-            val newValue = StringBuilder(dest)
-                .replace(dstart, dend, source.subSequence(start, end).toString())
-                .toString()
-            return if (pattern.matches(newValue)) null else ""
-        }
-    }
-
-    private class SimpleTextWatcher(private val onChange: () -> Unit) : android.text.TextWatcher {
-        override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-        override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
-        override fun afterTextChanged(s: android.text.Editable?) = onChange()
     }
 
     private fun pauseRoutePlayback() {
@@ -1655,7 +1170,6 @@ class MainActivity : AppCompatActivity() {
         startService(intent)
         stopService(Intent(this, MockLocationService::class.java))
         binding.textStatus.setText(R.string.status_idle)
-        binding.textError.text = ""
     }
 
     override fun onStart() {
@@ -1682,7 +1196,7 @@ class MainActivity : AppCompatActivity() {
         syncStatusFromPrefs()
         if (!isLocationEnabled()) {
             binding.textStatus.setText(R.string.status_error)
-            binding.textError.setText(R.string.error_location_disabled)
+            Toast.makeText(this, R.string.error_location_disabled, Toast.LENGTH_LONG).show()
         }
     }
 
@@ -1729,7 +1243,7 @@ class MainActivity : AppCompatActivity() {
                 ensurePermissionsAndStart()
             } else {
                 binding.textStatus.setText(R.string.status_error)
-                binding.textError.setText(R.string.error_no_permission)
+                Toast.makeText(this, R.string.error_no_permission, Toast.LENGTH_LONG).show()
             }
         }
 
@@ -1738,7 +1252,7 @@ class MainActivity : AppCompatActivity() {
                 startRoutePlayback()
             } else {
                 binding.textStatus.setText(R.string.status_error)
-                binding.textError.setText(R.string.error_notifications)
+                Toast.makeText(this, R.string.error_notifications, Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -1747,7 +1261,7 @@ class MainActivity : AppCompatActivity() {
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(
                 this,
-                Manifest.permission.POST_NOTIFICATIONS
+                android.Manifest.permission.POST_NOTIFICATIONS
             ) != PackageManager.PERMISSION_GRANTED
     }
 
@@ -1761,12 +1275,138 @@ class MainActivity : AppCompatActivity() {
             binding.layoutPlaybackStats.visibility = View.VISIBLE
             binding.buttonStartRoute.text = "Stop Route"
             isRouteRunning = true
+            isRouteRunning = true
         } else {
             binding.layoutPlaybackStats.visibility = View.GONE
             binding.buttonStartRoute.text = "Start Route"
             isRouteRunning = false
         }
     }
+
+    private val mockRouteReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            try {
+                val json = intent.getStringExtra(MockLocationService.EXTRA_ROUTE_JSON) ?: return
+                val points = RouteJson.fromJson(json)
+                if (points.isNotEmpty()) {
+                    routePoints.clear()
+                    routePoints.addAll(points)
+                    updateRouteLine()
+                    updateRouteStats()
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("MockApp", "Error in mockRouteReceiver", e)
+            }
+        }
+    }
+
+    private fun loadRoute(entity: RouteEntity) {
+        val points = RouteJson.fromJson(entity.pointsJson)
+        if (points.isNotEmpty()) {
+            routePoints.clear()
+            routePoints.addAll(points)
+            selectedRouteId = entity.id
+            updateRouteLine()
+            updateRouteStats()
+            binding.layoutRouteEditor.visibility = View.VISIBLE
+            Toast.makeText(this, "Loaded: ${entity.name}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun observeRoutes() {
+        AppDatabase.getInstance(this).routeDao().getAllRoutes().asLiveData().observe(this) { routes ->
+            val items = routes.map {
+                com.sofawander.app.ui.RouteItem(
+                    id = it.id,
+                    name = it.name,
+                    points = RouteJson.fromJson(it.pointsJson),
+                    createdAt = it.createdAt
+                )
+            }
+            adapter.submitList(items)
+        }
+    }
+
+    private fun observeFavorites() {
+        AppDatabase.getInstance(this).favoriteDao().getAllFavorites().asLiveData().observe(this) { favorites ->
+            val items = favorites.map {
+                com.sofawander.app.ui.FavoriteItem(
+                    id = it.id,
+                    name = it.name,
+                    lat = it.lat,
+                    lng = it.lng,
+                    note = it.note
+                )
+            }
+            favoriteAdapter.submitList(items)
+        }
+    }
+
+    private fun observeHistory() {
+        AppDatabase.getInstance(this).runHistoryDao().getAllHistoryFlow().asLiveData().observe(this) { history ->
+            val items = history.map {
+                com.sofawander.app.ui.RunHistoryItem(
+                    id = it.id,
+                    routeName = it.routeName,
+                    pointCount = it.pointCount,
+                    speedMode = it.speedMode,
+                    loopEnabled = it.loopEnabled,
+                    roundTripEnabled = it.roundTripEnabled,
+                    startedAt = it.startedAt,
+                    endedAt = it.endedAt,
+                    status = it.status
+                )
+            }
+            historyAdapter.submitList(items)
+        }
+    }
+
+    private fun showFavoritesDialog() {
+        val dialog = FavoriteListDialog(favoriteAdapter) { item ->
+            selectedFavoriteId = item.id
+            lastTappedPoint = RoutePoint(item.lat, item.lng)
+            mapLibre?.animateCamera(
+                CameraUpdateFactory.newLatLngZoom(
+                    org.maplibre.android.geometry.LatLng(item.lat, item.lng),
+                    15.5
+                )
+            )
+        }
+        dialog.show(supportFragmentManager, "favorites")
+    }
+
+    private fun showRunDetails(item: RunHistoryItem) {
+        // Implement logic to show run details or replay
+        android.app.AlertDialog.Builder(this)
+            .setTitle(item.routeName ?: "History Run")
+            .setMessage("Points: ${item.pointCount}\nStatus: ${item.status}")
+            .setPositiveButton("Replay") { _, _ ->
+                loadAndReplayHistory(item.id)
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    private fun applySpeedPreset(kmh: Double) {
+        val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+        prefs.edit().putString("pref_speed_walk", kmh.toString()).apply()
+        updateRouteStats()
+        Toast.makeText(this, "Speed set to $kmh km/h", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun ensurePermissionsAndStart() {
+        if (needsNotificationPermission()) {
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), REQUEST_NOTIFICATION_PERMISSION)
+        } else {
+            startRoutePlayback()
+        }
+    }
+
+    private fun showImportSummary(count: Int) {
+        Toast.makeText(this, "Imported $count points", Toast.LENGTH_SHORT).show()
+    }
+
+
 
     private fun isLocationEnabled(): Boolean {
         val lm = getSystemService(Context.LOCATION_SERVICE) as LocationManager
@@ -1876,6 +1516,26 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             android.util.Log.e("MockApp", "Search error", e)
             Toast.makeText(this, "搜尋出錯: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+
+
+    private fun loadAndReplayHistory(historyId: Long) {
+        lifecycleScope.launch {
+            val db = AppDatabase.getInstance(this@MainActivity)
+            val run = db.runHistoryDao().getById(historyId) ?: return@launch
+            val points = RouteJson.fromJson(run.routePointsJson ?: "")
+            if (points.isNotEmpty()) {
+                routePoints.clear()
+                routePoints.addAll(points)
+                updateRouteLine()
+                updateRouteStats()
+                Toast.makeText(this@MainActivity, "Replaying history...", Toast.LENGTH_SHORT).show()
+                startRoutePlayback()
+            } else {
+                Toast.makeText(this@MainActivity, "No points found in this history", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 

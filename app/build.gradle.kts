@@ -50,6 +50,8 @@ dependencies {
     ksp("androidx.room:room-compiler:2.8.4")
     implementation("org.maplibre.gl:android-sdk:11.8.1")
     implementation("com.google.android.gms:play-services-location:21.1.0")
+    implementation("androidx.preference:preference-ktx:1.2.1")
+    implementation("com.google.code.gson:gson:2.10.1")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")

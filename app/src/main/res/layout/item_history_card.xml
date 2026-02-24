@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginHorizontal="16dp"
+    android:layout_marginVertical="8dp"
+    app:cardCornerRadius="12dp"
+    app:cardElevation="2dp"
+    app:strokeColor="@color/slate_200"
+    app:strokeWidth="1dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="16dp"
+        android:gravity="center_vertical">
+
+        <View
+            android:id="@+id/viewStatusIndicator"
+            android:layout_width="4dp"
+            android:layout_height="32dp"
+            android:background="@color/emerald_500"
+            android:layout_marginEnd="16dp" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/textHistoryTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="台北 ➡️ 高雄"
+                android:textStyle="bold"
+                android:textSize="15sp"
+                android:textColor="@color/slate_900" />
+
+            <TextView
+                android:id="@+id/textHistoryMeta"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="2024/02/24 · 3.5 km · 12:30"
+                android:textSize="13sp"
+                android:layout_marginTop="4dp"
+                android:textColor="@color/slate_400" />
+        </LinearLayout>
+
+        <ImageView
+            android:id="@+id/btnReplay"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:src="@drawable/ic_play"
+            android:padding="4dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            app:tint="@color/sky_500"
+            android:contentDescription="Replay" />
+
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>

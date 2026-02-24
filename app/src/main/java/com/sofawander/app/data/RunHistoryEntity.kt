@@ -14,5 +14,6 @@ data class RunHistoryEntity(
     @ColumnInfo(name = "roundtrip_enabled") val roundTripEnabled: Boolean,
     @ColumnInfo(name = "started_at") val startedAt: Long,
     @ColumnInfo(name = "ended_at") val endedAt: Long? = null,
+    @ColumnInfo(name = "route_points_json") val routePointsJson: String,
     @ColumnInfo(name = "status") val status: String
 )

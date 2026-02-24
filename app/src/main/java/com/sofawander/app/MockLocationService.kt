@@ -148,7 +148,8 @@ class MockLocationService : Service() {
                     setRunningFlag(true)
                     broadcastStatus(getString(R.string.status_running), "")
                     updateNotification()
-                    insertRunHistory(points.size, speedMode)
+                    val routeJson = intent.getStringExtra(EXTRA_ROUTE_JSON) ?: ""
+                    insertRunHistory(points.size, speedMode, routeJson)
                 }
             }
             ACTION_PAUSE_ROUTE -> {
@@ -601,7 +602,7 @@ class MockLocationService : Service() {
         )
     }
 
-    private fun insertRunHistory(pointCount: Int, speedMode: Int) {
+    private fun insertRunHistory(pointCount: Int, speedMode: Int, routePointsJson: String) {
         val now = System.currentTimeMillis()
         val entity = RunHistoryEntity(
             routeName = null,
@@ -610,7 +611,8 @@ class MockLocationService : Service() {
             loopEnabled = isLoopEnabled,
             roundTripEnabled = isRoundTripEnabled,
             startedAt = now,
-            status = RUN_STATUS_RUNNING
+            status = RUN_STATUS_RUNNING,
+            routePointsJson = routePointsJson
         )
         ioScope.launch {
             activeRunId = db.runHistoryDao().insert(entity)
