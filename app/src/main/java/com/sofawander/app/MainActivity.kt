@@ -587,6 +587,21 @@ class MainActivity : AppCompatActivity() {
                 true
             }
 
+            // Load cached camera position for zero-delay startup centering
+            val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+            val lastLat = prefs.getFloat("pref_last_lat", 0f).toDouble()
+            val lastLng = prefs.getFloat("pref_last_lng", 0f).toDouble()
+            val lastZoom = prefs.getFloat("pref_last_zoom", 15f).toDouble()
+            
+            if (lastLat != 0.0 || lastLng != 0.0) {
+                map.moveCamera(org.maplibre.android.camera.CameraUpdateFactory.newCameraPosition(
+                    org.maplibre.android.camera.CameraPosition.Builder()
+                        .target(org.maplibre.android.geometry.LatLng(lastLat, lastLng))
+                        .zoom(lastZoom)
+                        .build()
+                ))
+            }
+
             centerToCurrentLocation()
         }
 
@@ -1512,6 +1527,16 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         mapView.onPause()
         super.onPause()
+
+        // Caching camera position for zero-delay next startup
+        mapLibre?.cameraPosition?.let { pos ->
+            val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+            prefs.edit()
+                .putFloat("pref_last_lat", pos.target!!.latitude.toFloat())
+                .putFloat("pref_last_lng", pos.target!!.longitude.toFloat())
+                .putFloat("pref_last_zoom", pos.zoom.toFloat())
+                .apply()
+        }
     }
 
     override fun onStop() {
