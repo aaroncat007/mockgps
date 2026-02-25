@@ -2,6 +2,7 @@
     <string name="app_name">躺著逛街</string>
     <string name="title_status">狀態</string>
     <string name="status_idle">閒置</string>
+    <string name="status_completed">完成</string>
     <string name="status_running">執行中</string>
     <string name="status_error">錯誤</string>
     <string name="status_paused">已暫停</string>
@@ -51,6 +52,7 @@
     <string name="hint_favorite_note">備註</string>
     <string name="button_save">儲存</string>
     <string name="button_cancel">取消</string>
+    <string name="button_close">關閉</string>
     <string name="button_use_as_start">設為路線起點</string>
     <string name="button_add_to_route">加入路線</string>
     <string name="button_import_route">匯入 GPX/KML</string>
@@ -143,4 +145,8 @@
     <string name="action_history_delete">刪除紀錄</string>
     <string name="title_rename_history">編輯總結名稱</string>
     <string name="msg_history_deleted">歷史紀錄已刪除</string>
+    <string name="title_route_start_mode">開始路線</string>
+    <string name="message_route_start_mode">您希望以什麼方式前往路線起點？</string>
+    <string name="button_walk_to_start">步行至起點</string>
+    <string name="button_teleport_to_start">瞬間移動至起點</string>
 </resources>

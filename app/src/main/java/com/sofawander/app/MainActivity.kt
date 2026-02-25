@@ -177,7 +177,7 @@ class MainActivity : AppCompatActivity() {
             }
             val running = status == getString(R.string.status_running) || status == getString(R.string.status_paused)
             isRouteRunning = running
-            binding.buttonStartRoute.text = if (running) "Stop Route" else "Start Route"
+            binding.buttonStartRoute.text = if (running) getString(R.string.button_stop) else getString(R.string.button_start)
             binding.layoutPlaybackStats.visibility = if (running) View.VISIBLE else View.GONE
 
             if (status == getString(R.string.status_paused)) {
@@ -1039,6 +1039,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    @SuppressWarnings("MissingPermission")
     private fun centerToCurrentLocation() {
         if (ActivityCompat.checkSelfPermission(
                 this,
@@ -1057,15 +1058,51 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        fusedLocationClient.lastLocation.addOnSuccessListener { location ->
-            location?.let {
+        fusedLocationClient.getCurrentLocation(
+            com.google.android.gms.location.Priority.PRIORITY_BALANCED_POWER_ACCURACY,
+            object : com.google.android.gms.tasks.CancellationToken() {
+                override fun isCancellationRequested() = false
+                override fun onCanceledRequested(p0: com.google.android.gms.tasks.OnTokenCanceledListener) = this
+            }
+        ).addOnSuccessListener { location ->
+            if (location != null) {
                 mapLibre?.animateCamera(
                     CameraUpdateFactory.newLatLngZoom(
-                        org.maplibre.android.geometry.LatLng(it.latitude, it.longitude),
+                        org.maplibre.android.geometry.LatLng(location.latitude, location.longitude),
                         16.0
                     ),
                     1000
                 )
+            } else {
+                // High accuracy immediate location failed. Fallback to LocationManager NETWORK_PROVIDER
+                val lm = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+                val netLoc = try {
+                    lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
+                } catch (e: SecurityException) { null }
+                
+                if (netLoc != null) {
+                    mapLibre?.animateCamera(
+                        CameraUpdateFactory.newLatLngZoom(
+                            org.maplibre.android.geometry.LatLng(netLoc.latitude, netLoc.longitude),
+                            16.0
+                        ),
+                        1000
+                    )
+                } else {
+                    fusedLocationClient.lastLocation.addOnSuccessListener { lastLoc ->
+                        if (lastLoc != null) {
+                            mapLibre?.animateCamera(
+                                CameraUpdateFactory.newLatLngZoom(
+                                    org.maplibre.android.geometry.LatLng(lastLoc.latitude, lastLoc.longitude),
+                                    16.0
+                                ),
+                                1000
+                            )
+                        } else {
+                            Toast.makeText(this, "無法獲取定位，請確認 GPS 已開啟且位於收訊良好處", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
             }
         }.addOnFailureListener {
             Toast.makeText(this, "Failed to get current location", Toast.LENGTH_SHORT).show()
@@ -1332,6 +1369,20 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        android.app.AlertDialog.Builder(this)
+            .setTitle(R.string.title_route_start_mode)
+            .setMessage(R.string.message_route_start_mode)
+            .setPositiveButton(R.string.button_walk_to_start) { _, _ ->
+                launchRoutePlayback(true)
+            }
+            .setNegativeButton(R.string.button_teleport_to_start) { _, _ ->
+                launchRoutePlayback(false)
+            }
+            .setNeutralButton(R.string.button_cancel, null)
+            .show()
+    }
+
+    private fun launchRoutePlayback(walkToStart: Boolean) {
         val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
         
         val defaultWalk = prefs.getString("pref_speed_walk", "9.0") ?: "9.0"
@@ -1348,6 +1399,10 @@ class MainActivity : AppCompatActivity() {
         val intent = Intent(this, MockLocationService::class.java).apply {
             action = MockLocationService.ACTION_START_ROUTE
             putExtra(MockLocationService.EXTRA_ROUTE_JSON, RouteJson.toJson(routePoints))
+            putExtra(MockLocationService.EXTRA_WALK_TO_START, walkToStart)
+            // Use current device location if we are walking to start. If 0.0, MockService will fallback to lastKnown.
+            putExtra("extra_start_lat", currentMockLat)
+            putExtra("extra_start_lng", currentMockLng)
             
             putExtra(MockLocationService.EXTRA_SPEED_MIN_KMH, activeSpeed * 0.9)
             putExtra(MockLocationService.EXTRA_SPEED_MAX_KMH, activeSpeed * 1.1)
@@ -1363,7 +1418,7 @@ class MainActivity : AppCompatActivity() {
         }
         ContextCompat.startForegroundService(this, intent)
         isRouteRunning = true
-        binding.buttonStartRoute.text = "Stop Route"
+        binding.buttonStartRoute.text = getString(R.string.button_stop)
         binding.layoutPlaybackStats.visibility = View.VISIBLE
         binding.textStatus.setText(R.string.status_running)
     }
@@ -1392,7 +1447,7 @@ class MainActivity : AppCompatActivity() {
             action = MockLocationService.ACTION_STOP_ROUTE
         }
         startService(intent)
-        stopService(Intent(this, MockLocationService::class.java))
+        // do not stop service to keep generating mock location at the last point
         binding.textStatus.setText(R.string.status_idle)
     }
 
@@ -1417,12 +1472,22 @@ class MainActivity : AppCompatActivity() {
             IntentFilter(MockLocationService.ACTION_ROUTE_UPDATED),
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
+
+        // Sync state from MockLocationService
+        val prefs = getSharedPreferences(MockLocationService.PREFS_NAME, Context.MODE_PRIVATE)
+        val isRunning = prefs.getBoolean(MockLocationService.PREF_KEY_RUNNING, false)
+        isRouteRunning = isRunning
+        binding.buttonStartRoute.text = if (isRunning) getString(R.string.button_stop) else getString(R.string.button_start)
+        if (isRunning) {
+            binding.layoutPlaybackStats.visibility = View.VISIBLE
+            binding.textStatus.setText(R.string.status_running)
+        }
+
         // Restore walk menu icon
-        val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
-        val savedMode = prefs.getString("pref_active_speed_mode", "walk") ?: "walk"
+        val commonPrefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+        val savedMode = commonPrefs.getString("pref_active_speed_mode", "walk") ?: "walk"
         updateWalkMenuIcon(savedMode)
         
-        syncStatusFromPrefs()
         if (!isLocationEnabled()) {
             binding.textStatus.setText(R.string.status_error)
             Toast.makeText(this, R.string.error_location_disabled, Toast.LENGTH_LONG).show()

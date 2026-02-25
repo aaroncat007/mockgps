@@ -2,6 +2,7 @@
     <string name="app_name">Sofa Wander</string>
     <string name="title_status">Status</string>
     <string name="status_idle">Idle</string>
+    <string name="status_completed">Completed</string>
     <string name="status_running">Running</string>
     <string name="status_error">Error</string>
     <string name="status_paused">Paused</string>
@@ -53,6 +54,7 @@
     <string name="hint_favorite_note">Note</string>
     <string name="button_save">Save</string>
     <string name="button_cancel">Cancel</string>
+    <string name="button_close">Close</string>
     <string name="button_use_as_start">Use as Route Start</string>
     <string name="button_add_to_route">Add to Route</string>
     <string name="button_import_route">Import GPX/KML</string>
@@ -143,4 +145,8 @@
     <string name="action_history_delete">Delete History</string>
     <string name="title_rename_history">Rename History</string>
     <string name="msg_history_deleted">History deleted</string>
+    <string name="title_route_start_mode">Start Route</string>
+    <string name="message_route_start_mode">How would you like to begin this route?</string>
+    <string name="button_walk_to_start">Walk to Start</string>
+    <string name="button_teleport_to_start">Teleport to Start</string>
 </resources>
