@@ -40,6 +40,7 @@
     <string name="label_home">Map</string>
     <string name="button_add_favorite">Add Favorite</string>
     <string name="button_delete_favorite">Delete Favorite</string>
+    <string name="button_delete">Delete</string>
     <string name="hint_favorite_name">Favorite name</string>
     <string name="error_favorite_name">Please enter a favorite name.</string>
     <string name="error_favorite_point">No point selected. Tap the map first.</string>
@@ -133,4 +134,13 @@
     <string name="error_export_failed">Failed to export route.</string>
     <string name="title_teleport">Teleport</string>
     <string name="title_show_on_map">Show on Map</string>
+    
+    <!-- History Options -->
+    <string name="title_history_options">History Options</string>
+    <string name="action_history_replay">Replay Route</string>
+    <string name="action_history_load">Load as Route</string>
+    <string name="action_history_rename">Rename</string>
+    <string name="action_history_delete">Delete History</string>
+    <string name="title_rename_history">Rename History</string>
+    <string name="msg_history_deleted">History deleted</string>
 </resources>

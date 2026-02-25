@@ -13,6 +13,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
 import android.os.SystemClock
+import android.content.pm.ServiceInfo
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.sofawander.app.data.AppDatabase
@@ -34,6 +35,7 @@ class MockLocationService : Service() {
     private var handlerThread: HandlerThread? = null
     private var handler: Handler? = null
     private var locationManager: LocationManager? = null
+    private val activeProviders = mutableSetOf<String>()
     private var hasReportedError = false
     private val routePoints = mutableListOf<RoutePoint>()
     private var currentSegmentIndex = 0
@@ -62,6 +64,12 @@ class MockLocationService : Service() {
     private var lastLat: Double = 0.0
     private var lastLng: Double = 0.0
     private var bouncePhase = 0.0
+    
+    // Joystick state
+    private var isJoystickActive = false
+    private var joystickDx = 0f
+    private var joystickDy = 0f
+    private var joystickRunnable: Runnable? = null
     @Volatile private var activeRunId: Long? = null
     private val db by lazy { AppDatabase.getInstance(this) }
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -78,10 +86,16 @@ class MockLocationService : Service() {
     override fun onCreate() {
         super.onCreate()
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        
+        // Persistent background thread for all mock movements
+        handlerThread = HandlerThread("MockLocationBackgroundThread").apply { start() }
+        handler = Handler(handlerThread!!.looper)
+        
         startInForeground()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.i(TAG, "onStartCommand: action=${intent?.action}")
         when (intent?.action) {
             ACTION_START_ROUTE -> {
                 val json = intent.getStringExtra(EXTRA_ROUTE_JSON).orEmpty()
@@ -141,8 +155,11 @@ class MockLocationService : Service() {
                     startTimeMs = System.currentTimeMillis()
 
                     // 初始化 test provider 並啟動路線播放循環
-                    ensureTestProvider()
+                    if (!providerReady) {
+                        ensureTestProvider()
+                    }
                     Log.d(TAG, "onStartCommand: providerReady=$providerReady, points=${routePoints.size}")
+                    stopActiveMovement()
                     startRouteLoop()
 
                     setRunningFlag(true)
@@ -161,11 +178,8 @@ class MockLocationService : Service() {
                 updateNotification()
             }
             ACTION_STOP_ROUTE -> {
-                routePoints.clear()
-                currentSegmentIndex = 0
-                distanceOnSegment = 0.0
-                isPaused = false
-                finishRunHistory(RUN_STATUS_STOPPED)
+                Log.i(TAG, "Stopping all movement and service")
+                stopActiveMovement()
                 setRunningFlag(false)
                 broadcastStatus(getString(R.string.status_idle), "")
                 stopSelf()
@@ -179,33 +193,41 @@ class MockLocationService : Service() {
                 if (speedMaxMetersPerSecond < speedMinMetersPerSecond) {
                     speedMaxMetersPerSecond = speedMinMetersPerSecond
                 }
+
+                // Update base speed as well
+                speedMetersPerSecond = (speedMinMetersPerSecond + speedMaxMetersPerSecond) / 2.0
                 
                 // Immediately apply new speed to the current segment
                 currentSegmentSpeed = pickSegmentSpeed()
+                Log.i(TAG, "Speed updated: base=${speedMetersPerSecond * 3.6} km/h")
             }
             ACTION_TELEPORT -> {
                 val lat = intent.getDoubleExtra(EXTRA_LAT, 0.0)
                 val lng = intent.getDoubleExtra(EXTRA_LNG, 0.0)
                 val walkMode = intent.getBooleanExtra(EXTRA_WALK_MODE, false)
-                
+
                 if (lat != 0.0 || lng != 0.0) {
-                    ensureTestProvider()
-                    
+                    if (!providerReady) {
+                        ensureTestProvider()
+                    }
+
                     if (walkMode) {
                         // Walk Mode: 從目前位置走到目標
                         var startLat = intent.getDoubleExtra("extra_start_lat", 0.0)
                         var startLng = intent.getDoubleExtra("extra_start_lng", 0.0)
-                        
+
                         if (startLat == 0.0 || startLng == 0.0) {
                             startLat = lastLat
                             startLng = lastLng
                         }
 
                         if (startLat == 0.0 || startLng == 0.0) {
-                            val lm = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+                            val lm =
+                                getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
                             try {
-                                val lastKnown = lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER) 
-                                             ?: lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
+                                val lastKnown =
+                                    lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
+                                        ?: lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
                                 if (lastKnown != null) {
                                     startLat = lastKnown.latitude
                                     startLng = lastKnown.longitude
@@ -218,7 +240,7 @@ class MockLocationService : Service() {
                                 startLng = lng
                             }
                         }
-                        
+
                         val points = listOf(RoutePoint(startLat, startLng), RoutePoint(lat, lng))
                         routePoints.clear()
                         routePoints.addAll(points)
@@ -226,15 +248,16 @@ class MockLocationService : Service() {
                         distanceOnSegment = 0.0
                         isForward = true
                         pauseUntilRealtime = 0L
-                        speedMetersPerSecond = SPEED_WALK
-                        currentSegmentSpeed = SPEED_WALK
+                        // Use current speed settings instead of resetting to SPEED_WALK (9 km/h)
+                        currentSegmentSpeed = pickSegmentSpeed()
                         isPaused = false
                         lastUpdateRealtime = SystemClock.elapsedRealtime()
-                        
+
                         totalRouteDistance = haversineMeters(startLat, startLng, lat, lng)
                         distanceTraveled = 0.0
                         startTimeMs = System.currentTimeMillis()
-                        
+
+                        stopActiveMovement()
                         startRouteLoop()
                         setRunningFlag(true)
                         broadcastStatus(getString(R.string.status_running), "Walking to $lat, $lng")
@@ -242,11 +265,51 @@ class MockLocationService : Service() {
                         updateNotification()
                     } else {
                         // Instant Jump
+                        stopActiveMovement()
+                        distanceTraveled = 0.0
+                        totalRouteDistance = 0.0
+                        startTimeMs = System.currentTimeMillis()
                         pushMockLocation(lat, lng)
-                        broadcastStatus(getString(R.string.status_teleported), "Jumped to $lat, $lng")
+                        broadcastStatus(
+                            getString(R.string.status_teleported),
+                            "Jumped to $lat, $lng"
+                        )
                         broadcastProgress()
                         broadcastRoute(emptyList())
                     }
+                }
+            }
+            ACTION_JOYSTICK_MOVE -> {
+                joystickDx = intent.getFloatExtra(EXTRA_JOYSTICK_DX, 0f)
+                joystickDy = intent.getFloatExtra(EXTRA_JOYSTICK_DY, 0f)
+                val wasActive = isJoystickActive
+                isJoystickActive = (joystickDx != 0f || joystickDy != 0f)
+                
+                if (isJoystickActive && !wasActive) {
+                    if (lastLat == 0.0 && lastLng == 0.0) {
+                        val lm = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+                        try {
+                            val lastKnown = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+                                ?: lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+                            if (lastKnown != null) {
+                                lastLat = lastKnown.latitude
+                                lastLng = lastKnown.longitude
+                            }
+                        } catch (_: SecurityException) {
+                        }
+                    }
+                    if (!providerReady) {
+                        ensureTestProvider()
+                    }
+                    stopActiveMovement()
+                    isJoystickActive = true
+                    startJoystickLoop()
+                    setRunningFlag(true)
+                    broadcastStatus(getString(R.string.status_running), "Joystick Active")
+                } else if (!isJoystickActive && wasActive) {
+                    stopActiveMovement()
+                    setRunningFlag(false)
+                    broadcastStatus(getString(R.string.status_idle), "")
                 }
             }
         }
@@ -255,7 +318,10 @@ class MockLocationService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        stopRouteLoop()
+        stopActiveMovement()
+        handlerThread?.quitSafely()
+        handlerThread = null
+        handler = null
         removeTestProvider()
         finishRunHistory(RUN_STATUS_STOPPED)
         setRunningFlag(false)
@@ -279,7 +345,11 @@ class MockLocationService : Service() {
         }
 
         val notification = buildNotification("Waiting for route...")
-        startForeground(NOTIFICATION_ID, notification)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
     }
 
     private fun buildNotification(contentText: String): Notification {
@@ -321,10 +391,17 @@ class MockLocationService : Service() {
         val totalKm = totalRouteDistance / 1000.0
         val speedKmh = currentSegmentSpeed * 3.6
         val elapsedStr = formatDuration(elapsed)
-        val etaMs = if (distanceTraveled > 0) {
-            ((totalRouteDistance - distanceTraveled) / (distanceTraveled / elapsed) * 1.0).toLong()
-        } else 0L
-        val etaStr = formatDuration(elapsed + etaMs)
+        
+        var etaMs = 0L
+        if (distanceTraveled > 0 && elapsed > 0 && totalRouteDistance > distanceTraveled) {
+            val pace = distanceTraveled / elapsed
+            if (pace > 0.0000001) {
+                etaMs = ((totalRouteDistance - distanceTraveled) / pace).toLong()
+                if (etaMs > 86400000L * 7) etaMs = 86400000L * 7
+            }
+        }
+        
+        val etaStr = if (etaMs > 0) formatDuration(elapsed + etaMs) else "--:--"
 
         val text = "%.2f/%.2f km | %s/%s | %.1f km/h".format(
             distKm, totalKm, elapsedStr, etaStr, speedKmh
@@ -348,94 +425,135 @@ class MockLocationService : Service() {
     }
 
     private fun startRouteLoop() {
-        if (handlerThread != null) return
-
-        handlerThread = HandlerThread("mock-location-thread").also { it.start() }
-        handler = Handler(handlerThread!!.looper)
-
         handler?.post(object : Runnable {
             override fun run() {
+                // Check if we were stopped
+                if (handlerThread == null) return
                 updatePlayback()
                 handler?.postDelayed(this, UPDATE_INTERVAL_MS)
             }
         })
     }
 
-    private fun stopRouteLoop() {
+    private fun stopActiveMovement() {
+        isJoystickActive = false
         handler?.removeCallbacksAndMessages(null)
-        handlerThread?.quitSafely()
-        handlerThread = null
-        handler = null
+        // Note: we don't quit handlerThread here as it's persistent
+    }
+
+    private fun stopRouteLoop() {
+        // Redundant with stopActiveMovement, kept for compatibility if needed
+        stopActiveMovement()
     }
 
     @Suppress("DEPRECATION")
     private fun ensureTestProvider() {
-        val provider = LocationManager.GPS_PROVIDER
         val lm = locationManager ?: return
-        providerReady = false
-
-        try {
-            lm.removeTestProvider(provider)
-        } catch (_: Exception) { }
-
-        try {
-            lm.addTestProvider(
-                provider,
-                false, false, false, false, true, true, true,
-                android.location.Criteria.POWER_LOW,
-                android.location.Criteria.ACCURACY_FINE
-            )
-        } catch (e: SecurityException) {
-            Log.w(TAG, "addTestProvider SecurityException: ${e.message}")
-            reportMockAppError()
+        
+        if (providerReady) {
+            Log.i(TAG, "ensureTestProvider: Provider already ready.")
             return
-        } catch (e: IllegalArgumentException) {
-            Log.w(TAG, "addTestProvider IAE: ${e.message}")
         }
 
-        try {
-            lm.setTestProviderEnabled(provider, true)
-            providerReady = true
-        } catch (e: SecurityException) {
-            Log.w(TAG, "setTestProviderEnabled SecurityException: ${e.message}")
-            reportMockAppError()
-        } catch (e: IllegalArgumentException) {
-            Log.w(TAG, "setTestProviderEnabled IAE: ${e.message}")
-            reportMockAppError()
+        val providers = listOf(
+            LocationManager.GPS_PROVIDER,
+            LocationManager.NETWORK_PROVIDER,
+            "fused" // Fused provider often used by modern apps
+        )
+        
+        activeProviders.clear()
+        for (provider in providers) {
+            try {
+                // Try to remove first for a clean state
+                try {
+                    lm.removeTestProvider(provider)
+                } catch (_: Exception) {}
+
+                Log.i(TAG, "ensureTestProvider: Initializing $provider")
+                lm.addTestProvider(
+                    provider,
+                    provider != LocationManager.GPS_PROVIDER, // requiresNetwork
+                    provider == LocationManager.GPS_PROVIDER, // requiresSatellite
+                    false, false, true, true, true,
+                    android.location.Criteria.POWER_LOW,
+                    android.location.Criteria.ACCURACY_FINE
+                )
+                
+                lm.setTestProviderEnabled(provider, true)
+                lm.setTestProviderStatus(provider, android.location.LocationProvider.AVAILABLE, null, System.currentTimeMillis())
+                activeProviders.add(provider)
+                Log.i(TAG, "ensureTestProvider: Enabled and set status to AVAILABLE for $provider")
+            } catch (e: SecurityException) {
+                Log.e(TAG, "addTestProvider SecurityException for $provider: ${e.message}")
+                reportMockAppError()
+                return
+            } catch (e: Exception) {
+                Log.w(TAG, "Error initializing provider $provider: ${e.message}")
+            }
         }
+        providerReady = activeProviders.isNotEmpty()
     }
 
     @Suppress("DEPRECATION")
     private fun removeTestProvider() {
         val lm = locationManager ?: return
-        try {
-            lm.removeTestProvider(LocationManager.GPS_PROVIDER)
-        } catch (_: Exception) {
-            // Ignore cleanup errors.
+        val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, "fused")
+        for (p in providers) {
+            try {
+                lm.removeTestProvider(p)
+            } catch (_: Exception) { }
         }
+        activeProviders.clear()
+        providerReady = false
     }
 
     private fun pushMockLocation(latitude: Double, longitude: Double) {
-        if (!providerReady) return
-        val lm = locationManager ?: return
-        val location = Location(LocationManager.GPS_PROVIDER).apply {
-            this.latitude = latitude
-            this.longitude = longitude
-            accuracy = 5f
-            time = System.currentTimeMillis()
-            elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
-        }
         lastLat = latitude
         lastLng = longitude
 
-        try {
-            lm.setTestProviderLocation(LocationManager.GPS_PROVIDER, location)
-            logGpsEvent(location)
-        } catch (_: SecurityException) {
-            reportMockAppError()
-        } catch (_: IllegalArgumentException) {
-            providerReady = false
-            ensureTestProvider()
+        if (!providerReady) {
+            Log.w(TAG, "pushMockLocation: provider not ready, ignoring $latitude, $longitude")
+            return
+        }
+        val lm = locationManager ?: return
+        
+        val now = System.currentTimeMillis()
+        val elapsed = SystemClock.elapsedRealtimeNanos()
+        
+        // Use activeProviders set rather than a fixed list to avoid IAExceptions
+        if (activeProviders.isEmpty()) return
+        
+        for (p in activeProviders) {
+            val location = Location(p).apply {
+                this.latitude = latitude
+                this.longitude = longitude
+                accuracy = 1.0f // More accurate
+                altitude = 0.0
+                speed = currentSegmentSpeed.toFloat()
+                bearing = 0f
+                time = now
+                elapsedRealtimeNanos = elapsed
+                
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    verticalAccuracyMeters = 1f
+                    speedAccuracyMetersPerSecond = 0.1f
+                    bearingAccuracyDegrees = 1f
+                }
+            }
+
+            try {
+                lm.setTestProviderLocation(p, location)
+                if (p == LocationManager.GPS_PROVIDER) logGpsEvent(location)
+                Log.i(TAG, "pushMockLocation: Successfully pushed to $p ($latitude, $longitude)")
+            } catch (e: SecurityException) {
+                Log.e(TAG, "pushMockLocation SecurityException for $p: ${e.message}")
+                reportMockAppError()
+            } catch (e: IllegalArgumentException) {
+                Log.e(TAG, "pushMockLocation IAE for $p: ${e.message}")
+                providerReady = false
+            } catch (e: Exception) {
+                Log.e(TAG, "pushMockLocation unexpected error for $p: ${e.message}")
+            }
         }
     }
 
@@ -591,6 +709,66 @@ class MockLocationService : Service() {
         return randomBetween(min, max)
     }
 
+    private fun startJoystickLoop() {
+        lastUpdateRealtime = SystemClock.elapsedRealtime()
+        joystickRunnable = object : Runnable {
+            override fun run() {
+                if (!isJoystickActive) return
+
+                val now = SystemClock.elapsedRealtime()
+                val elapsedMs = (now - lastUpdateRealtime).coerceAtLeast(1)
+                lastUpdateRealtime = now
+
+                // Use the currently picked speed (which reacts to ACTION_UPDATE_SPEED)
+                val baseSpeed = pickSegmentSpeed()
+                
+                val length = kotlin.math.sqrt((joystickDx * joystickDx + joystickDy * joystickDy).toDouble())
+                if (length > 0) {
+                    // Normalize length to 1.0 max (it should already be normalized from Activity)
+                    val scale = length.coerceAtMost(1.0)
+                    val distanceToMoveMeters = baseSpeed * scale * (elapsedMs / 1000.0)
+
+                    val ndx = joystickDx / length
+                    val ndy = joystickDy / length
+                    
+                    // Note: y axis on screen is inverted (down is positive), so -ndy is North
+                    val bearing = Math.toDegrees(Math.atan2(ndx.toDouble(), -ndy.toDouble()))
+                    
+                    val newLoc = movePoint(lastLat, lastLng, distanceToMoveMeters, bearing)
+                    lastLat = newLoc[0]
+                    lastLng = newLoc[1]
+                    
+                    distanceTraveled += distanceToMoveMeters
+                    pushMockLocation(lastLat, lastLng)
+                    broadcastProgress()
+                }
+
+                if (isJoystickActive) {
+                    handler?.postDelayed(this, 100) // 10 updates per second
+                }
+            }
+        }
+        handler?.post(joystickRunnable!!)
+    }
+    
+    private fun stopJoystickLoop() {
+        stopActiveMovement()
+    }
+    
+    private fun movePoint(lat: Double, lng: Double, distanceMeters: Double, bearingDegrees: Double): DoubleArray {
+        val r = 6371000.0 // Earth radius
+        val brng = Math.toRadians(bearingDegrees)
+        val lat1 = Math.toRadians(lat)
+        val lon1 = Math.toRadians(lng)
+        
+        val lat2 = Math.asin(Math.sin(lat1) * Math.cos(distanceMeters/r) +
+                             Math.cos(lat1) * Math.sin(distanceMeters/r) * Math.cos(brng))
+        val lon2 = lon1 + Math.atan2(Math.sin(brng) * Math.sin(distanceMeters/r) * Math.cos(lat1),
+                                     Math.cos(distanceMeters/r) - Math.sin(lat1) * Math.sin(lat2))
+                                     
+        return doubleArrayOf(Math.toDegrees(lat2), Math.toDegrees(lon2))
+    }
+
     private fun randomBetween(min: Double, max: Double): Double {
         if (max <= min) return min
         return min + Math.random() * (max - min)
@@ -707,6 +885,11 @@ class MockLocationService : Service() {
         const val ACTION_UPDATE_SPEED = "com.sofawander.app.ACTION_UPDATE_SPEED"
         const val ACTION_TELEPORT = "com.sofawander.app.ACTION_TELEPORT"
         const val ACTION_ROUTE_UPDATED = "com.sofawander.app.ACTION_ROUTE_UPDATED"
+
+        const val ACTION_JOYSTICK_MOVE = "com.sofawander.app.ACTION_JOYSTICK_MOVE"
+        const val EXTRA_JOYSTICK_DX = "extra_joystick_dx"
+        const val EXTRA_JOYSTICK_DY = "extra_joystick_dy"
+
         const val EXTRA_WALK_MODE = "extra_walk_mode"
         const val EXTRA_LAT = "extra_lat"
         const val EXTRA_LNG = "extra_lng"
@@ -725,17 +908,18 @@ class MockLocationService : Service() {
         const val EXTRA_DRIFT_METERS = "extra_drift_meters"
         const val EXTRA_BOUNCE_METERS = "extra_bounce_meters"
         const val EXTRA_SMOOTHING_ALPHA = "extra_smoothing_alpha"
-        private const val RUN_STATUS_RUNNING = "RUNNING"
-        private const val RUN_STATUS_COMPLETED = "COMPLETED"
-        private const val RUN_STATUS_STOPPED = "STOPPED"
-        private const val PREFS_NAME = "mock_prefs"
-        private const val PREF_KEY_RUNNING = "mock_service_running"
-        private const val UPDATE_INTERVAL_MS = 1000L
-        private const val SPEED_MODE_JOG = 1
-        private const val SPEED_MODE_DRIVE = 2
-        private const val SPEED_WALK = 2.5
-        private const val SPEED_JOG = 4.0
-        private const val SPEED_DRIVE = 13.9
+        
+        const val RUN_STATUS_RUNNING = "RUNNING"
+        const val RUN_STATUS_COMPLETED = "COMPLETED"
+        const val RUN_STATUS_STOPPED = "STOPPED"
+        const val PREFS_NAME = "mock_prefs"
+        const val PREF_KEY_RUNNING = "mock_service_running"
+        const val UPDATE_INTERVAL_MS = 1000L
+        const val SPEED_MODE_JOG = 1
+        const val SPEED_MODE_DRIVE = 2
+        const val SPEED_WALK = 2.5
+        const val SPEED_JOG = 4.0
+        const val SPEED_DRIVE = 13.9
 
         const val ACTION_MOCK_PROGRESS = "com.sofawander.app.MOCK_PROGRESS"
         const val EXTRA_DISTANCE_TRAVELED = "extra_distance_traveled"

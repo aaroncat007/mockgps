@@ -26,10 +26,10 @@ abstract class AppDatabase : RoomDatabase() {
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
-                    context.applicationContext,
-                    AppDatabase::class.java,
-                    "mockgps.db"
-                ).fallbackToDestructiveMigration().build().also { INSTANCE = it }
+                                context.applicationContext,
+                                AppDatabase::class.java,
+                                "mockgps.db"
+                            ).fallbackToDestructiveMigration(false).build().also { INSTANCE = it }
             }
         }
     }

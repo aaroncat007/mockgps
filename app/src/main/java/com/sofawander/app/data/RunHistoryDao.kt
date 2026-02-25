@@ -19,4 +19,10 @@ interface RunHistoryDao {
 
     @Query("UPDATE run_history SET ended_at = :endedAt, status = :status WHERE id = :id")
     suspend fun updateEnd(id: Long, endedAt: Long, status: String)
+
+    @Query("UPDATE run_history SET route_name = :newName WHERE id = :id")
+    suspend fun rename(id: Long, newName: String)
+
+    @Query("DELETE FROM run_history WHERE id = :id")
+    suspend fun deleteById(id: Long)
 }

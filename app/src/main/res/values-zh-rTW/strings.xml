@@ -38,6 +38,7 @@
     <string name="label_history">歷史</string>
     <string name="button_add_favorite">加入收藏</string>
     <string name="button_delete_favorite">刪除收藏</string>
+    <string name="button_delete">刪除</string>
     <string name="hint_favorite_name">收藏名稱</string>
     <string name="error_favorite_name">請輸入收藏名稱。</string>
     <string name="error_favorite_point">尚未選擇點位，請先點地圖。</string>
@@ -133,4 +134,13 @@
     <string name="error_export_failed">匯出路線失敗。</string>
     <string name="title_teleport">瞬間移動</string>
     <string name="title_show_on_map">顯示於地圖</string>
+    
+    <!-- History Options -->
+    <string name="title_history_options">歷史紀錄選項</string>
+    <string name="action_history_replay">重播路線</string>
+    <string name="action_history_load">載入為路徑</string>
+    <string name="action_history_rename">重新命名</string>
+    <string name="action_history_delete">刪除紀錄</string>
+    <string name="title_rename_history">編輯總結名稱</string>
+    <string name="msg_history_deleted">歷史紀錄已刪除</string>
 </resources>

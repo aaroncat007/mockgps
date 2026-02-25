@@ -206,11 +206,23 @@ class MainActivity : AppCompatActivity() {
             binding.textPlaybackDistance.text = formatDistance(traveled) + " / " + formatDistance(total)
 
             val elapsedStr = formatDuration(elapsedMs)
-            val etaMs = if (traveled > 0) {
-                ((total - traveled) / (traveled / elapsedMs)).toLong()
-            } else 0L
-            val etaStr = formatDuration(elapsedMs + etaMs)
-            binding.textPlaybackTime.text = "$elapsedStr / $etaStr"
+            
+            var etaMs = 0L
+            if (traveled > 0 && total > traveled && elapsedMs > 0) {
+                val currentPace = traveled / elapsedMs
+                if (currentPace > 0.0000001) { // 避免除以趨近於零造成溢位
+                    etaMs = ((total - traveled) / currentPace).toLong()
+                    if (etaMs > 86400000L * 7) etaMs = 86400000L * 7 // 如果預計時間超過 7 天，強制設為上限
+                }
+            }
+            
+            val etaStr = if (etaMs > 0) formatDuration(elapsedMs + etaMs) else "--:--"
+            
+            if (total <= 0 || etaMs == 0L) {
+                binding.textPlaybackTime.text = elapsedStr
+            } else {
+                binding.textPlaybackTime.text = "$elapsedStr / $etaStr"
+            }
 
             binding.textPlaybackSpeed.text = "%.1f km/h".format(speedKmh)
             
@@ -225,8 +237,36 @@ class MainActivity : AppCompatActivity() {
     private val historyLauncher = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) {
             val id = result.data?.getLongExtra("HISTORY_ID", -1L) ?: -1L
+            val action = result.data?.getStringExtra("HISTORY_ACTION") ?: "REPLAY"
             if (id != -1L) {
-                loadAndReplayHistory(id)
+                if (action == "LOAD") {
+                    loadHistoryAsRoute(id)
+                } else {
+                    loadAndReplayHistory(id)
+                }
+            }
+        }
+    }
+
+    private fun loadHistoryAsRoute(historyId: Long) {
+        lifecycleScope.launch {
+            val history = AppDatabase.getInstance(this@MainActivity)
+                .runHistoryDao().getById(historyId) ?: return@launch
+            
+            val points = try {
+                com.sofawander.app.data.RouteJson.fromJson(history.routePointsJson)
+            } catch (e: Exception) {
+                emptyList()
+            }
+            
+            if (points.isNotEmpty()) {
+                routePoints.clear()
+                routePoints.addAll(points)
+                updateRouteLine()
+                updateRouteStats()
+                binding.layoutRouteEditor.visibility = View.VISIBLE
+                binding.buttonStartRoute.text = getString(R.string.button_start)
+                Toast.makeText(this@MainActivity, "Loaded history: ${history.routeName ?: "Route"}", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -604,12 +644,28 @@ class MainActivity : AppCompatActivity() {
                         thumb.translationY = dy * ratio
                     }
                     
-                    // TODO: Dispatch joystick vector (dx, dy) to mock location service
+                    val intent = Intent(this@MainActivity, MockLocationService::class.java).apply {
+                        action = MockLocationService.ACTION_JOYSTICK_MOVE
+                        // Normalize to -1.0 .. 1.0 based on radius
+                        val normDx = if (joystickRadius > 0) thumb.translationX / joystickRadius else 0f
+                        val normDy = if (joystickRadius > 0) thumb.translationY / joystickRadius else 0f
+                        putExtra(MockLocationService.EXTRA_JOYSTICK_DX, normDx)
+                        putExtra(MockLocationService.EXTRA_JOYSTICK_DY, normDy)
+                    }
+                    startService(intent)
+
                     return@setOnTouchListener true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     thumb.animate().translationX(0f).translationY(0f).setDuration(150).start()
-                    // TODO: Stop sending joystick vector
+                    
+                    val intent = Intent(this@MainActivity, MockLocationService::class.java).apply {
+                        action = MockLocationService.ACTION_JOYSTICK_MOVE
+                        putExtra(MockLocationService.EXTRA_JOYSTICK_DX, 0f)
+                        putExtra(MockLocationService.EXTRA_JOYSTICK_DY, 0f)
+                    }
+                    startService(intent)
+                    
                     return@setOnTouchListener true
                 }
             }
@@ -807,7 +863,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         
-        if (defaultLat != null && defaultLng != null && defaultLat != 0.0) {
+        if (defaultLat != 0.0) {
             editCoords.setText("%.6f, %.6f".format(defaultLat, defaultLng))
         }
 
@@ -1067,6 +1123,39 @@ class MainActivity : AppCompatActivity() {
 
         val input = android.widget.EditText(this)
         input.hint = getString(R.string.hint_favorite_name)
+
+        // 背景進行 Geocoding 查詢地址
+        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val geocoder = android.location.Geocoder(this@MainActivity, java.util.Locale.getDefault())
+                val addresses = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                    val result = kotlinx.coroutines.CompletableDeferred<List<android.location.Address>?>()
+                    geocoder.getFromLocation(point.latitude, point.longitude, 1) { addrList ->
+                        result.complete(addrList)
+                    }
+                    result.await()
+                } else {
+                    @Suppress("DEPRECATION")
+                    geocoder.getFromLocation(point.latitude, point.longitude, 1)
+                }
+                
+                if (!addresses.isNullOrEmpty()) {
+                    val address = addresses[0]
+                    // 組合出友善的名稱，例如：城市名、區域或是地址
+                    val friendlyName = address.locality ?: address.subAdminArea ?: address.adminArea ?: address.getAddressLine(0)
+                    if (friendlyName != null) {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            if (input.text.isEmpty()) { // 在使用者還沒輸入的情況下才覆寫
+                                input.setText(friendlyName)
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // 地理編碼失敗不中斷流程
+                android.util.Log.e("MockApp", "Geocoding failed", e)
+            }
+        }
 
         android.app.AlertDialog.Builder(this)
             .setTitle(R.string.button_add_favorite)
@@ -1519,12 +1608,15 @@ class MainActivity : AppCompatActivity() {
         updateWalkMenuIcon(mode)
         updateRouteStats()
         
-        if (isRouteRunning) {
-            val intent = Intent(this, MockLocationService::class.java).apply {
-                action = MockLocationService.ACTION_UPDATE_SPEED
-                putExtra(MockLocationService.EXTRA_SPEED_MIN_KMH, kmh * 0.9)
-                putExtra(MockLocationService.EXTRA_SPEED_MAX_KMH, kmh * 1.1)
-            }
+        // Always update the service with new speed settings if it's potentially running
+        val intent = Intent(this, MockLocationService::class.java).apply {
+            action = MockLocationService.ACTION_UPDATE_SPEED
+            putExtra(MockLocationService.EXTRA_SPEED_MIN_KMH, kmh * 0.9)
+            putExtra(MockLocationService.EXTRA_SPEED_MAX_KMH, kmh * 1.1)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
             startService(intent)
         }
         
@@ -1653,7 +1745,7 @@ class MainActivity : AppCompatActivity() {
         try {
             // 注意：API 33+ 有新的 getFromLocationName，這裡用舊的相容版或簡易版
             val addresses = geocoder.getFromLocationName(query, 1)
-            if (addresses != null && addresses.isNotEmpty()) {
+            if (!addresses.isNullOrEmpty()) {
                 val addr = addresses[0]
                 val point = org.maplibre.android.geometry.LatLng(addr.latitude, addr.longitude)
                 mapLibre?.animateCamera(org.maplibre.android.camera.CameraUpdateFactory.newLatLngZoom(point, 15.0))
