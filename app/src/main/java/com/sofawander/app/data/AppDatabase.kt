@@ -25,11 +25,15 @@ abstract class AppDatabase : RoomDatabase() {
 
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
-                INSTANCE ?: Room.databaseBuilder(
+                val instance = Room.databaseBuilder(
                                 context.applicationContext,
                                 AppDatabase::class.java,
                                 "mockgps.db"
-                            ).fallbackToDestructiveMigration(false).build().also { INSTANCE = it }
+                            )
+                            .fallbackToDestructiveMigration(true) // 允許在版本不符時重置資料庫，避免崩潰
+                            .build()
+                INSTANCE = instance
+                instance
             }
         }
     }

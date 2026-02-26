@@ -149,4 +149,7 @@
     <string name="message_route_start_mode">How would you like to begin this route?</string>
     <string name="button_walk_to_start">Walk to Start</string>
     <string name="button_teleport_to_start">Teleport to Start</string>
+    <string name="slogan">Lounging is better than standing &lt;3</string>
+    <string name="label_exit">Exit App</string>
+    <string name="toast_back_to_exit">Press back again to exit</string>
 </resources>

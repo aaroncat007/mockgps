@@ -149,4 +149,7 @@
     <string name="message_route_start_mode">您希望以什麼方式前往路線起點？</string>
     <string name="button_walk_to_start">步行至起點</string>
     <string name="button_teleport_to_start">瞬間移動至起點</string>
+    <string name="slogan">可以躺著就不站著 &lt;3</string>
+    <string name="label_exit">退出程式</string>
+    <string name="toast_back_to_exit">再按一次返回鍵即可退出</string>
 </resources>

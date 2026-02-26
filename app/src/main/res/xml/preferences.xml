@@ -69,6 +69,13 @@
             app:title="循環播放"
             app:summary="路線結束後自動回到起點"
             app:defaultValue="false" />
+        <EditTextPreference
+            app:key="pref_loop_count"
+            app:title="循環次數 (0代表無限)"
+            app:summary="設定走完幾趟後自動結束"
+            app:dependency="pref_loop_enabled"
+            app:defaultValue="0"
+            app:useSimpleSummaryProvider="true" />
         <SwitchPreferenceCompat
             app:key="pref_random_speed"
             app:title="隨機化速度"

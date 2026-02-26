@@ -64,6 +64,7 @@ import com.google.android.gms.location.LocationServices
 import android.graphics.drawable.Drawable
 import android.view.inputmethod.EditorInfo
 import android.location.Geocoder
+import android.util.Log
 import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
@@ -85,6 +86,7 @@ class MainActivity : AppCompatActivity() {
     private var currentMockLat: Double = 0.0
     private var currentMockLng: Double = 0.0
     private var isCameraLocked: Boolean = false
+    private var backPressedTime: Long = 0L
 
     private fun isInvalidLocation(lat: Double, lng: Double): Boolean {
         return kotlin.math.abs(lat) < 0.0001 && kotlin.math.abs(lng) < 0.0001
@@ -341,6 +343,24 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // 雙擊返回鍵退出邏輯
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                // 若側邊選單開著，則先關閉
+                if (binding.drawerLayout.isDrawerOpen(androidx.core.view.GravityCompat.START)) {
+                    binding.drawerLayout.closeDrawers()
+                    return
+                }
+                val now = System.currentTimeMillis()
+                if (now - backPressedTime < 2000L) {
+                    finishAndRemoveTask()
+                } else {
+                    backPressedTime = now
+                    Toast.makeText(this@MainActivity, R.string.toast_back_to_exit, Toast.LENGTH_SHORT).show()
+                }
+            }
+        })
+
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
 
         adapter = RouteAdapter { item ->
@@ -398,11 +418,27 @@ class MainActivity : AppCompatActivity() {
             registerReceiver(mockRouteReceiver, routeFilter)
         }
 
-        // Android 13+ 通知權限動態請求
+        // Android 13+ 通知權限與定位權限請求
+        checkInitialPermissions()
+    }
+
+    private fun checkInitialPermissions() {
+        val permissions = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), REQUEST_NOTIFICATION_PERMISSION)
+                permissions.add(android.Manifest.permission.POST_NOTIFICATIONS)
             }
+        }
+        
+        if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            permissions.add(android.Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+        if (checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            permissions.add(android.Manifest.permission.ACCESS_COARSE_LOCATION)
+        }
+
+        if (permissions.isNotEmpty()) {
+            requestPermissions(permissions.toTypedArray(), REQUEST_CODE_PERMISSIONS)
         }
     }
 
@@ -555,6 +591,11 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 Toast.makeText(this, R.string.error_dev_options, Toast.LENGTH_SHORT).show()
             }
+        }
+
+        binding.menuExit.setOnClickListener {
+            binding.drawerLayout.close()
+            finishAndRemoveTask()
         }
 
         binding.btnWalkMenu.setOnClickListener {
@@ -956,7 +997,7 @@ class MainActivity : AppCompatActivity() {
         val textDistanceStatus = view.findViewById<android.widget.TextView>(R.id.textDistanceStatus)
         val btnFormat = view.findViewById<android.widget.Button>(R.id.btnFormat)
         val btnPaste = view.findViewById<android.widget.ImageButton>(R.id.btnPaste)
-        val checkWalkMode = view.findViewById<android.widget.CheckBox>(R.id.checkWalkMode)
+        val checkWalkMode = view.findViewById<com.google.android.material.switchmaterial.SwitchMaterial>(R.id.checkWalkMode)
         val btnCancel = view.findViewById<android.widget.Button>(R.id.btnCancel)
         val btnTeleportAction = view.findViewById<android.widget.Button>(R.id.btnTeleportAction)
         val btnTeleportAddFavorite = view.findViewById<android.widget.ImageButton>(R.id.btnTeleportAddFavorite)
@@ -1066,14 +1107,21 @@ class MainActivity : AppCompatActivity() {
                 val lat = parts[0].trim().toDoubleOrNull()
                 val lng = parts[1].trim().toDoubleOrNull()
                 if (lat != null && lng != null) {
-                    var startLat = currentMockLat
-                    var startLng = currentMockLng
+                    var startLat = 0.0
+                    var startLng = 0.0
+                    
+                    // 優先使用地圖引擎目前顯示的位置作為起點 (解決 Walk mode 飄移問題)
+                    val mapLoc = mapLibre?.locationComponent?.lastKnownLocation
+                    if (mapLoc != null && mapLoc.latitude != 0.0 && mapLoc.longitude != 0.0) {
+                        startLat = mapLoc.latitude
+                        startLng = mapLoc.longitude
+                    }
+                    
                     if (startLat == 0.0) {
-                        val mapLoc = mapLibre?.locationComponent?.lastKnownLocation
-                        if (mapLoc != null) {
-                            startLat = mapLoc.latitude
-                            startLng = mapLoc.longitude
-                        }
+                        // 退回使用 LocationHelper (會抓硬體 GPS 或系統紀錄，最後才 fallback 到 currentMockLat)
+                        val (bestLat, bestLng) = LocationHelper.getBestAvailableLocationSync(this@MainActivity, currentMockLat, currentMockLng)
+                        startLat = bestLat
+                        startLng = bestLng
                     }
 
                     if (startLat != 0.0) {
@@ -1144,55 +1192,20 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        fusedLocationClient.getCurrentLocation(
-            com.google.android.gms.location.Priority.PRIORITY_BALANCED_POWER_ACCURACY,
-            object : com.google.android.gms.tasks.CancellationToken() {
-                override fun isCancellationRequested() = false
-                override fun onCanceledRequested(p0: com.google.android.gms.tasks.OnTokenCanceledListener) = this
-            }
-        ).addOnSuccessListener { location ->
-            if (location != null && location.latitude != 0.0 && location.longitude != 0.0) {
+        LocationHelper.fetchCurrentLocationAsync(this, currentMockLat, currentMockLng,
+            onSuccess = { lat, lng ->
                 mapLibre?.animateCamera(
                     CameraUpdateFactory.newLatLngZoom(
-                        org.maplibre.android.geometry.LatLng(location.latitude, location.longitude),
+                        org.maplibre.android.geometry.LatLng(lat, lng),
                         16.0
                     ),
                     1000
                 )
-            } else {
-                // High accuracy immediate location failed. Fallback to LocationManager NETWORK_PROVIDER
-                val lm = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
-                val netLoc = try {
-                    lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
-                } catch (e: SecurityException) { null }
-                
-                if (netLoc != null) {
-                    mapLibre?.animateCamera(
-                        CameraUpdateFactory.newLatLngZoom(
-                            org.maplibre.android.geometry.LatLng(netLoc.latitude, netLoc.longitude),
-                            16.0
-                        ),
-                        1000
-                    )
-                } else {
-                    fusedLocationClient.lastLocation.addOnSuccessListener { lastLoc ->
-                        if (lastLoc != null) {
-                            mapLibre?.animateCamera(
-                                CameraUpdateFactory.newLatLngZoom(
-                                    org.maplibre.android.geometry.LatLng(lastLoc.latitude, lastLoc.longitude),
-                                    16.0
-                                ),
-                                1000
-                            )
-                        } else {
-                            Toast.makeText(this, "無法獲取定位，請確認 GPS 已開啟且位於收訊良好處", Toast.LENGTH_LONG).show()
-                        }
-                    }
-                }
+            },
+            onFailure = {
+                Toast.makeText(this, "無法獲取定位，請確認 GPS 已開啟且位於收訊良好處", Toast.LENGTH_LONG).show()
             }
-        }.addOnFailureListener {
-            Toast.makeText(this, "Failed to get current location", Toast.LENGTH_SHORT).show()
-        }
+        )
     }
 
     private fun saveRoute() {
@@ -1477,6 +1490,9 @@ class MainActivity : AppCompatActivity() {
         
         val randomSpeed = prefs.getBoolean("pref_random_speed", true)
         val loopEnabled = prefs.getBoolean("pref_loop_enabled", false)
+        val loopCountStr = prefs.getString("pref_loop_count", "0") ?: "0"
+        val loopCount = loopCountStr.toIntOrNull() ?: 0
+        
         val driftEnabled = prefs.getBoolean("pref_drift_enabled", false)
         val bounceEnabled = prefs.getBoolean("pref_bounce_enabled", false)
         val driftMeters = prefs.getString("pref_drift_meters", "5")?.toDoubleOrNull() ?: 5.0
@@ -1486,9 +1502,12 @@ class MainActivity : AppCompatActivity() {
             action = MockLocationService.ACTION_START_ROUTE
             putExtra(MockLocationService.EXTRA_ROUTE_JSON, RouteJson.toJson(routePoints))
             putExtra(MockLocationService.EXTRA_WALK_TO_START, walkToStart)
-            // Use current device location if we are walking to start. If 0.0, MockService will fallback to lastKnown.
-            putExtra("extra_start_lat", currentMockLat)
-            putExtra("extra_start_lng", currentMockLng)
+            // Use map location if possible, next physical, finally mock.
+            val mapLoc = mapLibre?.locationComponent?.lastKnownLocation
+            val startLat = if (mapLoc != null && mapLoc.latitude != 0.0) mapLoc.latitude else currentMockLat
+            val startLng = if (mapLoc != null && mapLoc.longitude != 0.0) mapLoc.longitude else currentMockLng
+            putExtra("extra_start_lat", startLat)
+            putExtra("extra_start_lng", startLng)
             
             putExtra(MockLocationService.EXTRA_SPEED_MIN_KMH, activeSpeed * 0.9)
             putExtra(MockLocationService.EXTRA_SPEED_MAX_KMH, activeSpeed * 1.1)
@@ -1497,12 +1516,18 @@ class MainActivity : AppCompatActivity() {
             
             putExtra(MockLocationService.EXTRA_RANDOM_SPEED, randomSpeed)
             putExtra(MockLocationService.EXTRA_LOOP_ENABLED, loopEnabled)
+            putExtra(MockLocationService.EXTRA_LOOP_COUNT, loopCount)
             putExtra(MockLocationService.EXTRA_DRIFT_ENABLED, driftEnabled)
             putExtra(MockLocationService.EXTRA_BOUNCE_ENABLED, bounceEnabled)
             putExtra(MockLocationService.EXTRA_DRIFT_METERS, driftMeters)
             putExtra(MockLocationService.EXTRA_BOUNCE_METERS, bounceMeters)
         }
-        ContextCompat.startForegroundService(this, intent)
+        if (!needsLocationPermission()) {
+            ContextCompat.startForegroundService(this, intent)
+        } else {
+            Log.w("MockApp", "launchRoutePlayback: Missing location permission, skipping service start")
+            Toast.makeText(this, R.string.error_no_permission, Toast.LENGTH_SHORT).show()
+        }
         isRouteRunning = true
         binding.buttonStartRoute.text = getString(R.string.button_stop)
         binding.layoutPlaybackStats.visibility = View.VISIBLE
@@ -1525,14 +1550,18 @@ class MainActivity : AppCompatActivity() {
         val intent = Intent(this, MockLocationService::class.java).apply {
             action = MockLocationService.ACTION_PAUSE_ROUTE
         }
-        startService(intent)
+        if (!needsLocationPermission()) {
+            startService(intent)
+        }
     }
 
     private fun stopRoutePlayback() {
         val intent = Intent(this, MockLocationService::class.java).apply {
             action = MockLocationService.ACTION_STOP_ROUTE
         }
-        startService(intent)
+        if (!needsLocationPermission()) {
+            startService(intent)
+        }
         // do not stop service to keep generating mock location at the last point
         binding.textStatus.setText(R.string.status_idle)
     }
@@ -1638,21 +1667,12 @@ class MainActivity : AppCompatActivity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQUEST_LOCATION_PERMISSION && grantResults.isNotEmpty()) {
-            if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                ensurePermissionsAndStart()
+        if (requestCode == REQUEST_CODE_PERMISSIONS || requestCode == REQUEST_LOCATION_PERMISSION || requestCode == REQUEST_NOTIFICATION_PERMISSION) {
+            if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
+                // Permissions granted, we might want to start something or just let user click again
+                Log.i("MockApp", "Permissions granted")
             } else {
-                binding.textStatus.setText(R.string.status_error)
                 Toast.makeText(this, R.string.error_no_permission, Toast.LENGTH_LONG).show()
-            }
-        }
-
-        if (requestCode == REQUEST_NOTIFICATION_PERMISSION && grantResults.isNotEmpty()) {
-            if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                startRoutePlayback()
-            } else {
-                binding.textStatus.setText(R.string.status_error)
-                Toast.makeText(this, R.string.error_notifications, Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -1770,15 +1790,20 @@ class MainActivity : AppCompatActivity() {
         updateRouteStats()
         
         // Always update the service with new speed settings if it's potentially running
-        val intent = Intent(this, MockLocationService::class.java).apply {
-            action = MockLocationService.ACTION_UPDATE_SPEED
-            putExtra(MockLocationService.EXTRA_SPEED_MIN_KMH, kmh * 0.9)
-            putExtra(MockLocationService.EXTRA_SPEED_MAX_KMH, kmh * 1.1)
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(intent)
+        // BUT only if we have permissions on Android 14+
+        if (!needsLocationPermission()) {
+            val intent = Intent(this, MockLocationService::class.java).apply {
+                action = MockLocationService.ACTION_UPDATE_SPEED
+                putExtra(MockLocationService.EXTRA_SPEED_MIN_KMH, kmh * 0.9)
+                putExtra(MockLocationService.EXTRA_SPEED_MAX_KMH, kmh * 1.1)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
         } else {
-            startService(intent)
+            Log.w("MockApp", "applySpeedPreset: Missing location permission, skipping service update")
         }
         
         if (showToast) {
@@ -1797,11 +1822,26 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun ensurePermissionsAndStart() {
-        if (needsNotificationPermission()) {
-            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), REQUEST_NOTIFICATION_PERMISSION)
+        val needsNotification = needsNotificationPermission()
+        val needsLocation = needsLocationPermission()
+        
+        val missing = mutableListOf<String>()
+        if (needsNotification) missing.add(android.Manifest.permission.POST_NOTIFICATIONS)
+        if (needsLocation) {
+            missing.add(android.Manifest.permission.ACCESS_FINE_LOCATION)
+            missing.add(android.Manifest.permission.ACCESS_COARSE_LOCATION)
+        }
+
+        if (missing.isNotEmpty()) {
+            requestPermissions(missing.toTypedArray(), REQUEST_CODE_PERMISSIONS)
         } else {
             startRoutePlayback()
         }
+    }
+
+    private fun needsLocationPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED ||
+               ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED
     }
 
     private fun showImportSummary(count: Int) {
