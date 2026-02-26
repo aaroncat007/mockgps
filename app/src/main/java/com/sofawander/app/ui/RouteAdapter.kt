@@ -46,14 +46,40 @@ class RouteAdapter(
     ) : RecyclerView.ViewHolder(itemView) {
 
         private val nameView: TextView = itemView.findViewById(R.id.textRouteName)
+        private val summaryView: TextView = itemView.findViewById(R.id.textRouteSummary)
+        private val distanceView: TextView = itemView.findViewById(R.id.textRouteDistance)
+        private val durationView: TextView = itemView.findViewById(R.id.textRouteDuration)
 
         fun bind(item: RouteItem, selectedId: Long?) {
             nameView.text = item.name
+            
+            if (!item.locationSummary.isNullOrEmpty()) {
+                summaryView.text = item.locationSummary
+                summaryView.visibility = View.VISIBLE
+            } else {
+                summaryView.visibility = View.GONE
+            }
+
+            distanceView.text = formatDistance(item.distanceMeters)
+            durationView.text = formatDuration(item.durationMs)
+
             itemView.isSelected = item.id == selectedId
             itemView.setOnClickListener {
                 onSelect(item.id)
                 onClick(item)
             }
+        }
+
+        private fun formatDistance(meters: Double): String {
+            return if (meters >= 1000) "%.2f km".format(meters / 1000.0) else "%.0f m".format(meters)
+        }
+
+        private fun formatDuration(millis: Long): String {
+            val seconds = (millis / 1000) % 60
+            val minutes = (millis / (1000 * 60)) % 60
+            val hours = (millis / (1000 * 60 * 60))
+            return if (hours > 0) "%d:%02d:%02d".format(hours, minutes, seconds)
+            else "%02d:%02d".format(minutes, seconds)
         }
     }
 

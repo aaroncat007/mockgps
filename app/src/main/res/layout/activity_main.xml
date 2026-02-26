@@ -260,73 +260,148 @@
                     android:textSize="12sp"
                     android:textColor="@color/slate_500"
                     android:gravity="center"
-                    android:layout_marginBottom="12dp"/>
+                    android:layout_marginBottom="8dp"/>
+
+                <!-- Config Options: Route Mode -->
+                <com.google.android.material.button.MaterialButtonToggleGroup
+                    android:id="@+id/toggleRouteMode"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    app:singleSelection="true"
+                    app:selectionRequired="true"
+                    app:checkedButton="@id/btnModeSingle"
+                    android:layout_marginBottom="8dp">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnModeSingle"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        style="?attr/materialButtonOutlinedStyle"
+                        android:text="單趟"
+                        android:textSize="12sp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnModeRoundTrip"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        style="?attr/materialButtonOutlinedStyle"
+                        android:text="折返"
+                        android:textSize="12sp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnModeLoop"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        style="?attr/materialButtonOutlinedStyle"
+                        android:text="循環"
+                        android:textSize="12sp" />
+                </com.google.android.material.button.MaterialButtonToggleGroup>
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
-                    android:weightSum="5"
-                    android:gravity="center">
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="12dp">
+                    
+                    <com.google.android.material.switchmaterial.SwitchMaterial
+                        android:id="@+id/switchWalkToStart"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:text="以步行前往起點"
+                        android:textSize="14sp"
+                        android:textColor="@color/slate_700" />
+                        
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/layoutLoopCount"
+                        android:layout_width="100dp"
+                        android:layout_height="wrap_content"
+                        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense"
+                        android:hint="次數(0=無限)"
+                        android:visibility="gone">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/editLoopCount"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="number"
+                            android:text="0"
+                            android:textSize="14sp" />
+                    </com.google.android.material.textfield.TextInputLayout>
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center"
+                    android:layout_marginBottom="8dp">
 
                     <ImageButton
                         android:id="@+id/buttonLoadRoute"
-                        android:layout_width="0dp"
-                        android:layout_height="48dp"
-                        android:layout_weight="1"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
                         android:background="?attr/selectableItemBackgroundBorderless"
                         android:src="@drawable/ic_route"
-                        android:padding="12dp"
+                        android:padding="8dp"
                         android:scaleType="fitCenter"
                         app:tint="@color/slate_700"
                         android:contentDescription="@string/button_load_route_to_map" />
 
                     <ImageButton
                         android:id="@+id/buttonSaveRoute"
-                        android:layout_width="0dp"
-                        android:layout_height="48dp"
-                        android:layout_weight="1"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
                         android:background="?attr/selectableItemBackgroundBorderless"
                         android:src="@drawable/ic_heart"
-                        android:padding="12dp"
+                        android:padding="8dp"
                         android:scaleType="fitCenter"
                         app:tint="@color/slate_700"
-                        android:contentDescription="@string/button_save_route" />
+                        android:contentDescription="@string/button_save_route"
+                        android:layout_marginStart="4dp"/>
+
+                    <ImageButton
+                        android:id="@+id/buttonUndoPoint"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:src="@drawable/ic_back"
+                        android:padding="8dp"
+                        android:scaleType="fitCenter"
+                        app:tint="@color/slate_700"
+                        android:contentDescription="@string/button_undo_point"
+                        android:layout_marginStart="4dp" />
+                    
+                    <ImageButton
+                        android:id="@+id/buttonClearRoute"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:src="@drawable/ic_delete"
+                        android:padding="8dp"
+                        android:scaleType="fitCenter"
+                        app:tint="@color/red_500"
+                        android:contentDescription="@string/button_clear_route"
+                        android:layout_marginStart="4dp"/>
+
+                    <Space
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content" />
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/buttonStartRoute"
                         style="@style/Widget.MaterialComponents.Button"
-                        android:layout_width="0dp"
+                        android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1.5"
                         android:text="@string/button_start"
-                        android:layout_marginHorizontal="4dp"
+                        android:paddingHorizontal="24dp"
                         app:backgroundTint="@color/blue_500" />
-
-                    <ImageButton
-                        android:id="@+id/buttonUndoPoint"
-                        android:layout_width="0dp"
-                        android:layout_height="48dp"
-                        android:layout_weight="1"
-                        android:background="?attr/selectableItemBackgroundBorderless"
-                        android:src="@drawable/ic_back"
-                        android:padding="12dp"
-                        android:scaleType="fitCenter"
-                        app:tint="@color/slate_700"
-                        android:contentDescription="@string/button_undo_point" />
-                    
-                    <ImageButton
-                        android:id="@+id/buttonClearRoute"
-                        android:layout_width="0dp"
-                        android:layout_height="48dp"
-                        android:layout_weight="1"
-                        android:background="?attr/selectableItemBackgroundBorderless"
-                        android:src="@drawable/ic_delete"
-                        android:padding="12dp"
-                        android:scaleType="fitCenter"
-                        app:tint="@color/red_500"
-                        android:contentDescription="@string/button_clear_route" />
-
                 </LinearLayout>
 
                 <com.google.android.material.button.MaterialButton
@@ -337,7 +412,7 @@
                     android:text="@string/button_close"
                     android:textColor="@color/slate_500"
                     android:layout_gravity="end"
-                    android:layout_marginTop="0dp" />
+                    android:layout_marginTop="-12dp" />
 
             </LinearLayout>
         </androidx.cardview.widget.CardView>

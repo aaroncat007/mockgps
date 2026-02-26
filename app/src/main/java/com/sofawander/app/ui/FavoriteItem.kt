@@ -5,5 +5,6 @@ data class FavoriteItem(
     val name: String,
     val lat: Double,
     val lng: Double,
+    val locationDescription: String?,
     val note: String?
 )

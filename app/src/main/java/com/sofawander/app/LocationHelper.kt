@@ -112,29 +112,30 @@ object LocationHelper {
                 if (location != null && !isInvalidLocation(location.latitude, location.longitude)) {
                     onSuccess(location.latitude, location.longitude)
                 } else {
-                    // 完全取不到時，使用同步備案機制
-                    val (lat, lng) = getBestAvailableLocationSync(context, fallbackLat, fallbackLng)
-                    if (!isInvalidLocation(lat, lng)) {
-                        onSuccess(lat, lng)
-                    } else {
-                        onFailure()
-                    }
+                    executeSyncFallback(context, fallbackLat, fallbackLng, onSuccess, onFailure)
                 }
             }.addOnFailureListener {
-                val (lat, lng) = getBestAvailableLocationSync(context, fallbackLat, fallbackLng)
-                if (!isInvalidLocation(lat, lng)) {
-                    onSuccess(lat, lng)
-                } else {
-                    onFailure()
-                }
+                executeSyncFallback(context, fallbackLat, fallbackLng, onSuccess, onFailure)
             }
         } catch (e: SecurityException) {
-            val (lat, lng) = getBestAvailableLocationSync(context, fallbackLat, fallbackLng)
-            if (!isInvalidLocation(lat, lng)) {
-                onSuccess(lat, lng)
-            } else {
-                onFailure()
-            }
+            executeSyncFallback(context, fallbackLat, fallbackLng, onSuccess, onFailure)
+        }
+    }
+
+    private fun executeSyncFallback(
+        context: Context,
+        fallbackLat: Double,
+        fallbackLng: Double,
+        onSuccess: (Double, Double) -> Unit,
+        onFailure: () -> Unit
+    ) {
+        val (lat, lng) = getBestAvailableLocationSync(context, fallbackLat, fallbackLng)
+        if (!isInvalidLocation(lat, lng)) {
+            Log.d(TAG, "Async fetch fell back to synchronous cache success.")
+            onSuccess(lat, lng)
+        } else {
+            Log.w(TAG, "All location retrieval methods failed.")
+            onFailure()
         }
     }
 

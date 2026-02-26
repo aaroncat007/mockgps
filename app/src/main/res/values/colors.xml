@@ -26,9 +26,10 @@
     <color name="slate_300">#CBD5E1</color>
     <color name="slate_400">#94A3B8</color>
     <color name="slate_500">#64748B</color>
+    <color name="slate_600">#475569</color>
     <color name="slate_800">#1E293B</color>
     <color name="red_500">#EF4444</color>
     <color name="overlay_black_light">#80000000</color>
     <color name="divider_light">#1F000000</color>
-    <color name="ic_launcher_background">#FFFFFF</color>
+    <color name="ic_launcher_background">#3897F5</color>
 </resources>

@@ -341,7 +341,13 @@ class MockLocationService : Service() {
                         updateNotification()
                     }
                     
-                    if (isInvalidLocation(lastLat, lastLng)) {
+                    val startLat = intent.getDoubleExtra("extra_start_lat", 0.0)
+                    val startLng = intent.getDoubleExtra("extra_start_lng", 0.0)
+                    
+                    if (!isInvalidLocation(startLat, startLng)) {
+                        lastLat = startLat
+                        lastLng = startLng
+                    } else if (isInvalidLocation(lastLat, lastLng)) {
                         val (bestLat, bestLng) = LocationHelper.getBestAvailableLocationSync(this@MockLocationService, 0.0, 0.0)
                         if (!isInvalidLocation(bestLat, bestLng)) {
                             lastLat = bestLat

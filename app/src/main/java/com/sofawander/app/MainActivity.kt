@@ -523,11 +523,40 @@ class MainActivity : AppCompatActivity() {
 
         binding.buttonClearRoute.setOnClickListener {
             routePoints.clear()
-            selectedRouteId = null
             updateRouteLine()
-            updateRouteStats()
         }
 
+        binding.buttonStartRoute.setOnClickListener {
+            if (isRouteRunning) {
+                stopRoutePlayback()
+            } else {
+                startRoutePlayback()
+            }
+        }
+        
+        binding.toggleRouteMode.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (isChecked) {
+                binding.layoutLoopCount.visibility = if (checkedId == R.id.btnModeSingle) View.GONE else View.VISIBLE
+            }
+        }
+        binding.editLoopCount.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                if (s.isNullOrEmpty()) return
+                val count = s.toString().toIntOrNull() ?: 1
+                if (count < 1) {
+                    val curr = binding.editLoopCount.text.toString()
+                    if (curr != "1") {
+                        binding.editLoopCount.setText("1")
+                        binding.editLoopCount.setSelection(1)
+                    }
+                }
+            }
+        })
+        binding.switchWalkToStart.setOnCheckedChangeListener { _, isChecked ->
+            // Handle switch state change if needed
+        }
         binding.buttonUndoPoint.setOnClickListener {
             if (routePoints.isNotEmpty()) {
                 routePoints.removeAt(routePoints.lastIndex)
@@ -778,6 +807,10 @@ class MainActivity : AppCompatActivity() {
                         val normDy = if (joystickRadius > 0) thumb.translationY / joystickRadius else 0f
                         putExtra(MockLocationService.EXTRA_JOYSTICK_DX, normDx)
                         putExtra(MockLocationService.EXTRA_JOYSTICK_DY, normDy)
+                        
+                        val (startLat, startLng) = getMapCenterOrFallback()
+                        putExtra("extra_start_lat", startLat)
+                        putExtra("extra_start_lng", startLng)
                     }
                     startService(intent)
 
@@ -995,7 +1028,6 @@ class MainActivity : AppCompatActivity() {
         }
 
         val textDistanceStatus = view.findViewById<android.widget.TextView>(R.id.textDistanceStatus)
-        val btnFormat = view.findViewById<android.widget.Button>(R.id.btnFormat)
         val btnPaste = view.findViewById<android.widget.ImageButton>(R.id.btnPaste)
         val checkWalkMode = view.findViewById<com.google.android.material.switchmaterial.SwitchMaterial>(R.id.checkWalkMode)
         val btnCancel = view.findViewById<android.widget.Button>(R.id.btnCancel)
@@ -1094,11 +1126,6 @@ class MainActivity : AppCompatActivity() {
             editCoords.setText(text)
         }
 
-        btnFormat.setOnClickListener {
-            val raw = editCoords.text.toString()
-            val clean = raw.replace(Regex("[^0-9.,-]"), "")
-            editCoords.setText(clean)
-        }
 
         btnTeleportAction.setOnClickListener {
             val raw = editCoords.text.toString()
@@ -1111,18 +1138,9 @@ class MainActivity : AppCompatActivity() {
                     var startLng = 0.0
                     
                     // 優先使用地圖引擎目前顯示的位置作為起點 (解決 Walk mode 飄移問題)
-                    val mapLoc = mapLibre?.locationComponent?.lastKnownLocation
-                    if (mapLoc != null && mapLoc.latitude != 0.0 && mapLoc.longitude != 0.0) {
-                        startLat = mapLoc.latitude
-                        startLng = mapLoc.longitude
-                    }
-                    
-                    if (startLat == 0.0) {
-                        // 退回使用 LocationHelper (會抓硬體 GPS 或系統紀錄，最後才 fallback 到 currentMockLat)
-                        val (bestLat, bestLng) = LocationHelper.getBestAvailableLocationSync(this@MainActivity, currentMockLat, currentMockLng)
-                        startLat = bestLat
-                        startLng = bestLng
-                    }
+                    val (bestStartLat, bestStartLng) = getMapCenterOrFallback()
+                    startLat = bestStartLat
+                    startLng = bestStartLng
 
                     if (startLat != 0.0) {
                         routePoints.clear()
@@ -1192,20 +1210,19 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        LocationHelper.fetchCurrentLocationAsync(this, currentMockLat, currentMockLng,
-            onSuccess = { lat, lng ->
-                mapLibre?.animateCamera(
-                    CameraUpdateFactory.newLatLngZoom(
-                        org.maplibre.android.geometry.LatLng(lat, lng),
-                        16.0
-                    ),
-                    1000
-                )
-            },
-            onFailure = {
-                Toast.makeText(this, "無法獲取定位，請確認 GPS 已開啟且位於收訊良好處", Toast.LENGTH_LONG).show()
-            }
-        )
+        val (targetLat, targetLng) = getMapCenterOrFallback()
+
+        if (!isInvalidLocation(targetLat, targetLng)) {
+            mapLibre?.animateCamera(
+                CameraUpdateFactory.newLatLngZoom(
+                    org.maplibre.android.geometry.LatLng(targetLat, targetLng),
+                    16.0
+                ),
+                1000
+            )
+        } else {
+            Toast.makeText(this, "無法獲取定位，請確認 GPS 已開啟且位於收訊良好處", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun saveRoute() {
@@ -1227,14 +1244,52 @@ class MainActivity : AppCompatActivity() {
                     return@setPositiveButton
                 }
 
-                val entity = RouteEntity(
-                    name = name,
-                    pointsJson = RouteJson.toJson(routePoints),
-                    createdAt = System.currentTimeMillis()
-                )
-
-                val db = AppDatabase.getInstance(this)
                 lifecycleScope.launch {
+                    var totalDist = 0.0
+                    for (i in 0 until routePoints.size - 1) {
+                        totalDist += haversineMeters(
+                            routePoints[i].latitude, routePoints[i].longitude,
+                            routePoints[i + 1].latitude, routePoints[i + 1].longitude
+                        )
+                    }
+
+                    val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this@MainActivity)
+                    val defaultWalk = prefs.getString("pref_speed_walk", "9.0") ?: "9.0"
+                    val activeSpeed = prefs.getString("pref_active_speed", defaultWalk)?.toDoubleOrNull() ?: 9.0
+                    val speedMps = activeSpeed / 3.6
+                    val estSeconds = totalDist / speedMps
+
+                    var locationSum: String? = null
+                    try {
+                        val geocoder = android.location.Geocoder(this@MainActivity, java.util.Locale.getDefault())
+                        val start = routePoints.first()
+                        val end = routePoints.last()
+                        
+                        val startAddr = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            geocoder.getFromLocation(start.latitude, start.longitude, 1)
+                        }
+                        val endAddr = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            geocoder.getFromLocation(end.latitude, end.longitude, 1)
+                        }
+                        
+                        val startText = startAddr?.firstOrNull()?.let { it.subLocality ?: it.locality }
+                        val endText = endAddr?.firstOrNull()?.let { it.subLocality ?: it.locality }
+                        
+                        if (startText != null && endText != null) {
+                            locationSum = if (startText == endText) startText else "$startText -> $endText"
+                        }
+                    } catch (_: Exception) {}
+
+                    val entity = RouteEntity(
+                        name = name,
+                        pointsJson = RouteJson.toJson(routePoints),
+                        distanceMeters = totalDist,
+                        durationMs = (estSeconds * 1000).toLong(),
+                        locationSummary = locationSum,
+                        createdAt = System.currentTimeMillis()
+                    )
+
+                    val db = AppDatabase.getInstance(this@MainActivity)
                     db.routeDao().insert(entity)
                     binding.layoutRouteEditor.visibility = android.view.View.GONE
                     Toast.makeText(this@MainActivity, "Route saved", Toast.LENGTH_SHORT).show()
@@ -1259,6 +1314,7 @@ class MainActivity : AppCompatActivity() {
 
         val input = android.widget.EditText(this)
         input.hint = getString(R.string.hint_favorite_name)
+        var detectedLocationDescription: String? = null
 
         // 背景進行 Geocoding 查詢地址
         lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
@@ -1278,7 +1334,16 @@ class MainActivity : AppCompatActivity() {
                 if (!addresses.isNullOrEmpty()) {
                     val address = addresses[0]
                     // 組合出友善的名稱，例如：城市名、區域或是地址
-                    val friendlyName = address.locality ?: address.subAdminArea ?: address.adminArea ?: address.getAddressLine(0)
+                    val city = address.locality ?: address.subAdminArea ?: ""
+                    val district = address.subLocality ?: ""
+                    val friendlyName = if (city.isNotEmpty() || district.isNotEmpty()) {
+                        if (city.isNotEmpty() && district.isNotEmpty()) "$district, $city" else city + district
+                    } else {
+                        address.adminArea ?: address.getAddressLine(0)
+                    }
+                    
+                    detectedLocationDescription = friendlyName
+                    
                     if (friendlyName != null) {
                         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                             if (input.text.isEmpty()) { // 在使用者還沒輸入的情況下才覆寫
@@ -1293,30 +1358,39 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        android.app.AlertDialog.Builder(this)
+        val dialog = android.app.AlertDialog.Builder(this)
             .setTitle(R.string.button_add_favorite)
             .setView(input)
-            .setPositiveButton(R.string.button_save) { _, _ ->
-                val name = input.text.toString().trim()
-                if (name.isEmpty()) {
-                    Toast.makeText(this, R.string.error_favorite_name, Toast.LENGTH_SHORT).show()
-                    return@setPositiveButton
-                }
-                val entity = FavoriteEntity(
-                    name = name,
-                    lat = point.latitude,
-                    lng = point.longitude,
-                    note = null,
-                    createdAt = System.currentTimeMillis()
-                )
-                val db = AppDatabase.getInstance(this)
-                lifecycleScope.launch {
-                    db.favoriteDao().insert(entity)
-                    Toast.makeText(this@MainActivity, "Favorite Added", Toast.LENGTH_SHORT).show()
-                }
-            }
+            .setPositiveButton(R.string.button_save, null) // 先設為 null 避免自動關閉
             .setNegativeButton(R.string.button_cancel, null)
-            .show()
+            .create()
+
+        dialog.show()
+
+        // 覆寫點擊事件以達成「不符合條件不關閉視窗」
+        dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val name = input.text.toString().trim()
+            if (name.isEmpty()) {
+                Toast.makeText(this, R.string.error_favorite_name, Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            
+            val entity = FavoriteEntity(
+                name = name,
+                lat = point.latitude,
+                lng = point.longitude,
+                locationDescription = detectedLocationDescription,
+                note = null,
+                createdAt = System.currentTimeMillis()
+            )
+            
+            val db = AppDatabase.getInstance(this)
+            lifecycleScope.launch {
+                db.favoriteDao().insert(entity)
+                Toast.makeText(this@MainActivity, "Favorite Added", Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
+            }
+        }
     }
 
     private fun showFavoriteEditDialog(item: FavoriteItem) {
@@ -1468,29 +1542,30 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        android.app.AlertDialog.Builder(this)
-            .setTitle(R.string.title_route_start_mode)
-            .setMessage(R.string.message_route_start_mode)
-            .setPositiveButton(R.string.button_walk_to_start) { _, _ ->
-                launchRoutePlayback(true)
-            }
-            .setNegativeButton(R.string.button_teleport_to_start) { _, _ ->
-                launchRoutePlayback(false)
-            }
-            .setNeutralButton(R.string.button_cancel, null)
-            .show()
+        // Direct launch reading from card UI
+        launchRoutePlayback()
     }
 
-    private fun launchRoutePlayback(walkToStart: Boolean) {
+    private fun launchRoutePlayback() {
         val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
         
         val defaultWalk = prefs.getString("pref_speed_walk", "9.0") ?: "9.0"
         val activeSpeed = prefs.getString("pref_active_speed", defaultWalk)?.toDoubleOrNull() ?: 9.0
-        val pauseShort = prefs.getString("pref_pause_short", "5")?.toDoubleOrNull() ?: 5.0
+        
+        val pauseEnabled = prefs.getBoolean("pref_pause_enabled", true)
+        val pauseShortStr = prefs.getString("pref_pause_short", "5")
+        val pauseShort = if (pauseEnabled) (pauseShortStr?.toDoubleOrNull() ?: 5.0) else 0.0
         
         val randomSpeed = prefs.getBoolean("pref_random_speed", true)
-        val loopEnabled = prefs.getBoolean("pref_loop_enabled", false)
-        val loopCountStr = prefs.getString("pref_loop_count", "0") ?: "0"
+        
+        // Read runtime settings from bottom card
+        val isWalkToStart = binding.switchWalkToStart.isChecked
+        val modeId = binding.toggleRouteMode.checkedButtonId
+        
+        val isLoopEnabled = modeId == R.id.btnModeLoop
+        val isRoundTripEnabled = modeId == R.id.btnModeRoundTrip
+        
+        val loopCountStr = binding.editLoopCount.text?.toString() ?: "0"
         val loopCount = loopCountStr.toIntOrNull() ?: 0
         
         val driftEnabled = prefs.getBoolean("pref_drift_enabled", false)
@@ -1501,11 +1576,9 @@ class MainActivity : AppCompatActivity() {
         val intent = Intent(this, MockLocationService::class.java).apply {
             action = MockLocationService.ACTION_START_ROUTE
             putExtra(MockLocationService.EXTRA_ROUTE_JSON, RouteJson.toJson(routePoints))
-            putExtra(MockLocationService.EXTRA_WALK_TO_START, walkToStart)
+            putExtra(MockLocationService.EXTRA_WALK_TO_START, isWalkToStart)
             // Use map location if possible, next physical, finally mock.
-            val mapLoc = mapLibre?.locationComponent?.lastKnownLocation
-            val startLat = if (mapLoc != null && mapLoc.latitude != 0.0) mapLoc.latitude else currentMockLat
-            val startLng = if (mapLoc != null && mapLoc.longitude != 0.0) mapLoc.longitude else currentMockLng
+            val (startLat, startLng) = getMapCenterOrFallback()
             putExtra("extra_start_lat", startLat)
             putExtra("extra_start_lng", startLng)
             
@@ -1515,7 +1588,8 @@ class MainActivity : AppCompatActivity() {
             putExtra(MockLocationService.EXTRA_PAUSE_MAX_SEC, pauseShort * 1.5)
             
             putExtra(MockLocationService.EXTRA_RANDOM_SPEED, randomSpeed)
-            putExtra(MockLocationService.EXTRA_LOOP_ENABLED, loopEnabled)
+            putExtra(MockLocationService.EXTRA_LOOP_ENABLED, isLoopEnabled)
+            putExtra(MockLocationService.EXTRA_ROUNDTRIP_ENABLED, isRoundTripEnabled)
             putExtra(MockLocationService.EXTRA_LOOP_COUNT, loopCount)
             putExtra(MockLocationService.EXTRA_DRIFT_ENABLED, driftEnabled)
             putExtra(MockLocationService.EXTRA_BOUNCE_ENABLED, bounceEnabled)
@@ -1730,6 +1804,8 @@ class MainActivity : AppCompatActivity() {
             updateRouteStats()
             binding.layoutRouteEditor.visibility = View.VISIBLE
             binding.buttonStartRoute.text = getString(R.string.button_start)
+            
+            binding.btnViewOrigin.performClick()
             Toast.makeText(this, "Loaded: ${entity.name}", Toast.LENGTH_SHORT).show()
         }
     }
@@ -1742,6 +1818,7 @@ class MainActivity : AppCompatActivity() {
                     name = it.name,
                     lat = it.lat,
                     lng = it.lng,
+                    locationDescription = it.locationDescription,
                     note = it.note
                 )
             }
@@ -1986,6 +2063,24 @@ class MainActivity : AppCompatActivity() {
         if (view != null) {
             val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
             imm.hideSoftInputFromWindow(view.windowToken, 0)
+        }
+    }
+
+    /**
+     * Gets the most accurate fallback location directly from the visual target (map camera or mock cache)
+     * Used uniformly across Teleport/Walk Mode jump, Joystick starts, Route logic, and Center Maps.
+     */
+    private fun getMapCenterOrFallback(): DoubleArray {
+        val locationComponent = mapLibre?.locationComponent
+        val mapLoc = if (locationComponent?.isLocationComponentActivated == true) {
+            locationComponent.lastKnownLocation
+        } else null
+        
+        return if (mapLoc != null && mapLoc.latitude != 0.0) {
+            doubleArrayOf(mapLoc.latitude, mapLoc.longitude)
+        } else {
+            val (blat, blng) = LocationHelper.getBestAvailableLocationSync(this, currentMockLat, currentMockLng)
+            doubleArrayOf(blat, blng)
         }
     }
 }

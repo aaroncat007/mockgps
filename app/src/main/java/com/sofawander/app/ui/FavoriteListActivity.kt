@@ -57,6 +57,7 @@ class FavoriteListActivity : AppCompatActivity() {
                     name = it.name,
                     lat = it.lat,
                     lng = it.lng,
+                    locationDescription = it.locationDescription,
                     note = it.note
                 )
             }

@@ -12,7 +12,7 @@ import androidx.room.RoomDatabase
         RunHistoryEntity::class,
         GpsEventEntity::class
     ],
-    version = 3
+    version = 4
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun routeDao(): RouteDao

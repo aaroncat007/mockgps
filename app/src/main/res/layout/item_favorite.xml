@@ -30,11 +30,19 @@
             android:textColor="@color/slate_900" />
 
         <TextView
-            android:id="@+id/textFavoriteCoords"
+            android:id="@+id/textFavoriteLocation"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:textSize="12sp"
-            android:textColor="@color/slate_700" />
+            android:textColor="@color/slate_600"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/textFavoriteCoords"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="11sp"
+            android:textColor="@color/slate_400" />
     </LinearLayout>
 
     <ImageButton

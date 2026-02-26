@@ -23,16 +23,23 @@
     </PreferenceCategory>
 
     <PreferenceCategory app:title="暫停時間設定 (秒)">
+        <SwitchPreferenceCompat
+            app:key="pref_pause_enabled"
+            app:title="啟用節點暫停"
+            app:summary="抵達路線每一個端點時自動暫停"
+            app:defaultValue="true" />
         <EditTextPreference
             app:key="pref_pause_short"
             app:title="短暫停"
             app:summary="點選路線時的短暫停時間"
+            app:dependency="pref_pause_enabled"
             app:defaultValue="5"
             app:useSimpleSummaryProvider="true" />
         <EditTextPreference
             app:key="pref_pause_long"
             app:title="長暫停"
             app:summary="停留較久的時間"
+            app:dependency="pref_pause_enabled"
             app:defaultValue="30"
             app:useSimpleSummaryProvider="true" />
     </PreferenceCategory>
@@ -64,18 +71,6 @@
     </PreferenceCategory>
 
     <PreferenceCategory app:title="其他設定">
-        <SwitchPreferenceCompat
-            app:key="pref_loop_enabled"
-            app:title="循環播放"
-            app:summary="路線結束後自動回到起點"
-            app:defaultValue="false" />
-        <EditTextPreference
-            app:key="pref_loop_count"
-            app:title="循環次數 (0代表無限)"
-            app:summary="設定走完幾趟後自動結束"
-            app:dependency="pref_loop_enabled"
-            app:defaultValue="0"
-            app:useSimpleSummaryProvider="true" />
         <SwitchPreferenceCompat
             app:key="pref_random_speed"
             app:title="隨機化速度"

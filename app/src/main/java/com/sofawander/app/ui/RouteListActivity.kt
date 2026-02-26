@@ -86,6 +86,9 @@ class RouteListActivity : AppCompatActivity() {
                     id = it.id,
                     name = it.name,
                     points = RouteJson.fromJson(it.pointsJson),
+                    distanceMeters = it.distanceMeters,
+                    durationMs = it.durationMs,
+                    locationSummary = it.locationSummary,
                     createdAt = it.createdAt
                 )
             }

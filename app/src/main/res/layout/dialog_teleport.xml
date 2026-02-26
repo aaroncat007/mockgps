@@ -83,17 +83,6 @@
             app:layout_constraintTop_toTopOf="@id/layoutCoordsInput"
             app:layout_constraintEnd_toEndOf="parent" />
 
-        <Button
-            android:id="@+id/btnFormat"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="FORMAT"
-            android:textSize="12sp"
-            android:layout_marginTop="4dp"
-            style="@style/Widget.AppCompat.Button.Borderless.Colored"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/layoutCoordsInput" />
-
         <com.google.android.material.switchmaterial.SwitchMaterial
             android:id="@+id/checkWalkMode"
             android:layout_width="match_parent"
@@ -104,7 +93,7 @@
             android:layout_marginTop="8dp"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/btnFormat" />
+            app:layout_constraintTop_toBottomOf="@id/layoutCoordsInput" />
 
         <TextView
             android:id="@+id/textDistanceStatus"
@@ -127,13 +116,6 @@
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintTop_toBottomOf="@id/textDistanceStatus">
 
-            <Button
-                android:id="@+id/btnTeleportBack"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="返回原點"
-                android:textColor="@android:color/holo_blue_dark"
-                style="@style/Widget.AppCompat.Button.Borderless" />
 
             <Space
                 android:layout_width="0dp"

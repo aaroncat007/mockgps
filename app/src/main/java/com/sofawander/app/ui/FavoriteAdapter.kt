@@ -48,11 +48,20 @@ class FavoriteAdapter(
     ) : RecyclerView.ViewHolder(itemView) {
 
         private val nameView: TextView = itemView.findViewById(R.id.textFavoriteName)
+        private val locationView: TextView = itemView.findViewById(R.id.textFavoriteLocation)
         private val coordView: TextView = itemView.findViewById(R.id.textFavoriteCoords)
         private val btnDelete: android.widget.ImageButton = itemView.findViewById(R.id.btnDeleteFavorite)
 
         fun bind(item: FavoriteItem, selectedId: Long?) {
             nameView.text = item.name
+            
+            if (!item.locationDescription.isNullOrEmpty()) {
+                locationView.text = item.locationDescription
+                locationView.visibility = View.VISIBLE
+            } else {
+                locationView.visibility = View.GONE
+            }
+            
             coordView.text = "${item.lat}, ${item.lng}"
             itemView.isSelected = item.id == selectedId
             itemView.setOnClickListener {

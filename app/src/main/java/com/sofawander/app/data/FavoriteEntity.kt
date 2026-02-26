@@ -10,6 +10,7 @@ data class FavoriteEntity(
     @ColumnInfo(name = "name") val name: String,
     @ColumnInfo(name = "lat") val lat: Double,
     @ColumnInfo(name = "lng") val lng: Double,
+    @ColumnInfo(name = "location_description") val locationDescription: String? = null,
     @ColumnInfo(name = "note") val note: String? = null,
     @ColumnInfo(name = "created_at") val createdAt: Long
 )
